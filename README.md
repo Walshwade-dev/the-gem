@@ -19,10 +19,11 @@ Designed for non-technical users in fast-paced, high-volume market environments,
 - Opening stock declared across **Grade 1 (G1 - Kubwa)** and **Grade 2 (G2 - Ndogo)**.
 - **Hierarchical Origin Tracking (Merchant Restricted):** Merchants select the Region of Origin (e.g. *Northern Tanzania, Kajiado South, Rift Valley, Central Kenya*) and specify the exact farm or locality (e.g. *Singida - Iramba Plains, Rom Farm Section 4*). This data feeds analytics on spoilage susceptibility, market uptake, and regional profitability.
 
-### 2. 4-Day Market Stay & Operational Overheads
-- **4-Day Maximum Stay:** Trucks are permitted up to 4 days at the bay.
-- **Demurrage Tracking:** Day 1 is covered under entry cess. Days 2, 3, and 4 incur a consecutive-day demurrage fee of **Ksh 1,000 / day**.
-- **Fixed Daily Overheads:** Automatically logs **Ksh 200/day** (Watchman: Ksh 100 + Bay Cleaners: Ksh 100).
+### 2. 4-to-5 Day Market Stay & Municipal Fees
+- **Standard Stay:** Trucks are permitted 4 days at the bay, extendable to a **5th day upon negotiation**.
+- **Day 1 Municipal Cess:** Paid per-net (e.g. Ksh 70/net) covering Day 1 in full.
+- **Consecutive Days (Days 2 to 5):** **Nets are NOT counted again by NCC officials!** Instead, NCC inspectors collect a flat **Ksh 1,000 / day** fee.
+- **Fixed Daily Overheads:** Automatically logs **Ksh 200/day** (Watchman: Ksh 100 + Bay Cleaners: Ksh 100) accrued daily.
 - **Casual Labor (Vibarua):** Records 1 to 3+ handlers (offloaders, sorters, selling assistants) with individually negotiated wages (e.g. Otieno: Ksh 700, Kamau: Ksh 600) and payout modes.
 
 ### 3. Dynamic Bargain Sales & Payment Tiers
@@ -31,10 +32,12 @@ Designed for non-technical users in fast-paced, high-volume market environments,
 - **Multi-Channel Payments:**
   - **Direct Cash:** Tracked in real time for evening drawer count.
   - **M-Pesa:** Captures transaction codes / sender numbers (ready for future Safaricom Daraja STK push integration).
-  - **Credit (Deni):** Extended to trusted buyers with due dates and customer records.
+  - **Credit (Deni):** Extended to trusted buyers with full stock lineage.
 
-### 4. Credit Ledger (Kitabu cha Madeni) & Collections
+### 4. Credit Ledger (Kitabu cha Madeni) & Stock Lineage
 - Real-time debtor dashboard.
+- **Stock Lineage Attribution:** Every credit transaction and subsequent repayment is strictly attached to:
+  $$\text{Credit Record} \longrightarrow [\text{Truck Plate}] + [\text{Farm Origin}] + [\text{Date Issued}] + [\text{Authorized By}]$$
 - **Debt Repayment (Kulipa Deni):** Collecting debt from past sales credits today's Cash or M-Pesa drawer **without falsely inflating today's sack sales volume**.
 - **Kenya DPA 2019 Compliance:** Customer phone numbers are masked and pseudonymized.
 
@@ -52,31 +55,36 @@ Designed for non-technical users in fast-paced, high-volume market environments,
 
 ---
 
-## 🚀 Getting Started
-
-### Prerequisites
-- Node.js (v20+ or v26+)
-- npm or yarn
-- Expo Go app on iOS or Android (optional, for physical device testing)
+## 🚀 Getting Started & Local Development
 
 ### Installation
 ```bash
 npm install
 ```
 
-### Running the Application
-
-#### 1. In Your Web Browser
+### Running Locally
 ```bash
+# Start local development server (Web & Mobile)
 npm run web
-```
-Opens in your browser at `http://localhost:8081`.
-
-#### 2. On Mobile via Expo Go
-```bash
+# Or start with Expo QR for mobile device
 npx expo start
 ```
-Scan the displayed QR code using the **Expo Go** app (Android) or the Camera app (iOS).
+
+---
+
+## 🌐 Deploying Online to Render
+
+This project includes a native Render Blueprint ([`render.yaml`](render.yaml)) configured for zero-config **Static Site** deployment on Render's global CDN:
+
+1. **Push to GitHub** (see repository setup below).
+2. Go to your **[Render Dashboard](https://dashboard.render.com/)**.
+3. Click **New +** $\rightarrow$ **Static Site** (or **Blueprint**).
+4. Connect your GitHub repository `Walshwade-dev/the-gem`.
+5. Render will automatically read `render.yaml` or you can verify:
+   - **Build Command:** `npm install && npm run build`
+   - **Publish Directory:** `dist`
+   - **SPA Routing Rewrite:** `/*` $\rightarrow$ `/index.html`
+6. Click **Create Static Site** — your live link will be generated (e.g. `https://the-gem.onrender.com`).
 
 ---
 
