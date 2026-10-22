@@ -52,11 +52,12 @@ export interface TruckBatch {
   truckPlate: string;          // e.g., "KDE 421B"
   origin: OriginDetails;       // Restricted to Merchant view
   arrivalTime: string;         // ISO timestamp (typically ~05:00 hrs)
-  dayNumber: number;           // 1 to 4
+  dayNumber: number;           // 1 to 5 (standard max 4 days, negotiable up to 5 days)
+  isNegotiatedExtension?: boolean; // True if dayNumber === 5
   
   // Nairobi City Council (NCC) Entry Data
-  nccDeclaredNets: number;     // Official count assessed by NCC inspectors
-  nccCessPaid: number;         // Cess fee paid to County Government
+  nccDeclaredNets: number;     // Official count assessed by NCC inspectors on Day 1
+  nccCessPaid: number;         // Cess fee paid to County Government for Day 1
 
   // Opening Stock Breakdown
   initialGrade1Nets: number;   // Grade 1 (large bulbs, premium)
@@ -153,7 +154,11 @@ export interface CreditEntry {
   id: string;
   saleId: string;
   batchId: string;
-  dateIssued: string;
+  truckPlate: string;            // Direct truck attribution
+  originRegion: string;          // Region of origin (e.g. Northern Tanzania)
+  originSpecificLocation: string;// Specific farm / market locality
+  dateIssued: string;            // Original date at which credit occurred
+  authorizedBy: string;          // Merchant or authorized seller who approved the credit
   grade: ProduceGrade;
   quantityNets: number;
   totalOwed: number;
@@ -166,11 +171,17 @@ export interface CreditEntry {
 export interface CreditRepayment {
   id: string;
   creditEntryId: string;
-  timestamp: string;
+  batchId: string;               // Direct attribution back to original stock batch
+  truckPlate: string;            // Direct attribution back to original truck
+  originRegion: string;          // Direct attribution back to origin for regional P&L
+  originSpecificLocation: string;
+  dateIssued: string;            // Original credit issue date
+  authorizedBy: string;          // Who originally authorized the credit
+  timestamp: string;             // When repayment occurred
   amountPaid: number;
   paymentMethod: 'CASH' | 'MPESA';
   mpesaReceiptCode?: string;
-  collectedBy: string;         // Person who received the cash/mpesa
+  collectedBy: string;           // Person who received the cash/mpesa
 }
 
 /**

@@ -173,14 +173,31 @@ export const CreditLedgerModal: React.FC<CreditLedgerModalProps> = ({ visible, o
                   </View>
                 </View>
 
-                {/* Outstanding Entries */}
+                {/* Outstanding Entries with Full Stock Lineage */}
                 {item.records.map((entry) => {
                   const remainingOwed = entry.totalOwed - entry.amountPaid;
                   return (
                     <View key={entry.id} style={styles.entryRow}>
                       <View style={{ flex: 1 }}>
+                        {/* Lineage Badge Row */}
+                        <View style={styles.lineageBadgeRow}>
+                          <View style={styles.truckBadge}>
+                            <Ionicons name="car-outline" size={11} color="#0F172A" />
+                            <Text style={styles.truckBadgeText}>{entry.truckPlate || 'KDE 421B'}</Text>
+                          </View>
+                          <View style={styles.originPill}>
+                            <Ionicons name="location-outline" size={11} color="#881337" />
+                            <Text style={styles.originPillText} numberOfLines={1}>
+                              {entry.originSpecificLocation || entry.originRegion || 'Northern Tanzania'}
+                            </Text>
+                          </View>
+                        </View>
+
                         <Text style={styles.entryDetails}>
-                          {entry.quantityNets} nets of {entry.grade === 'GRADE_1' ? 'G1' : 'G2'} (Issued: {entry.dateIssued})
+                          {entry.quantityNets} nets of {entry.grade === 'GRADE_1' ? 'Grade 1' : 'Grade 2'}
+                        </Text>
+                        <Text style={styles.entryAuthInfo}>
+                          Issued: {entry.dateIssued} • Authorized by: <Text style={styles.boldText}>{entry.authorizedBy || 'Merchant Admin'}</Text>
                         </Text>
                         <Text style={styles.entryPaidInfo}>
                           Paid: Ksh {entry.amountPaid.toLocaleString()} / {entry.totalOwed.toLocaleString()}
@@ -430,5 +447,49 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: '700',
     fontSize: 12,
+  },
+  lineageBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 4,
+  },
+  truckBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: '#E2E8F0',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  truckBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  originPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: '#FFE4E6',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    maxWidth: 180,
+  },
+  originPillText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#881337',
+  },
+  entryAuthInfo: {
+    fontSize: 10,
+    color: '#64748B',
+    marginTop: 2,
+  },
+  boldText: {
+    fontWeight: '700',
+    color: THEME.colors.textPrimary,
   }
 });

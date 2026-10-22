@@ -50,14 +50,22 @@ export const BatchOverviewCard: React.FC<BatchOverviewCardProps> = ({
   };
 
   const handleAdvanceDay = () => {
-    if (currentBatch.dayNumber >= 4) {
-      Alert.alert('Maximum Stay Reached', 'This truck has completed the maximum allowed 4 days at Wakulima Market. Please close the batch and dispatch.');
+    if (currentBatch.dayNumber >= 5) {
+      Alert.alert(
+        'Maximum Stay Reached', 
+        'This truck has completed 5 days (including the negotiated extension). Market rules require closing the batch and dispatching the truck.'
+      );
       return;
     }
 
+    const nextDay = currentBatch.dayNumber + 1;
+    const isDay5 = nextDay === 5;
+
     Alert.alert(
-      `Advance to Day ${currentBatch.dayNumber + 1}?`,
-      `Moving to Day ${currentBatch.dayNumber + 1} will automatically record:\n• Demurrage Fee: Ksh 1,000\n• Watchman Security: Ksh 100\n• Bay Cleaners: Ksh 100`,
+      isDay5 ? 'Advance to Day 5 (Negotiated Extension)?' : `Advance to Day ${nextDay}?`,
+      isDay5
+        ? `Standard stay is 4 days, but Day 5 is permitted through negotiation.\n\nMoving to Day 5 will record:\n• NCC Flat Fee: Ksh 1,000 (No net recount)\n• Watchman Security: Ksh 100\n• Bay Sanitation: Ksh 100`
+        : `Moving to Day ${nextDay} will record:\n• NCC Daily Flat Fee: Ksh 1,000 (No net recount by NCC officials)\n• Watchman Security: Ksh 100\n• Bay Cleaners: Ksh 100`,
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Confirm Advance', onPress: () => advanceBatchDay() }
@@ -78,7 +86,9 @@ export const BatchOverviewCard: React.FC<BatchOverviewCardProps> = ({
             </View>
           </View>
           <Text style={styles.arrivalText}>
-            Arrived 05:00 hrs • NCC Cess: Ksh {currentBatch.nccCessPaid.toLocaleString()} ({currentBatch.nccDeclaredNets} bags counted)
+            {currentBatch.dayNumber === 1
+              ? `Day 1 Entry: NCC Cess Ksh ${currentBatch.nccCessPaid.toLocaleString()} (${currentBatch.nccDeclaredNets} nets counted)`
+              : `Day ${currentBatch.dayNumber} at Bay • NCC Flat Fee: Ksh 1,000/day (No Recount)`}
           </Text>
         </View>
 

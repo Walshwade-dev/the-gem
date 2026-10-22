@@ -140,9 +140,9 @@ export function calculateDailyReconciliation(inputs: ReconciliationInputs): Dail
 }
 
 /**
- * Calculates demurrage fee for a truck based on current day number
+ * Calculates NCC consecutive day flat fee (Ksh 1,000 / day without recount)
  */
 export function calculateDemurrageFee(dayNumber: number): number {
   if (dayNumber <= 1) return 0;
-  return (dayNumber - 1) * MARKET_CONFIG.demurrageRatePerConsecutiveDay;
+  return (dayNumber - 1) * MARKET_CONFIG.nccRules.consecutiveDayFlatFee;
 }

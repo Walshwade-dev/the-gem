@@ -120,15 +120,23 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAuth, onOpenCreditLedger }
       {/* Truck Stay Day Tracker */}
       {currentBatch && (
         <View style={styles.dayTrackerRow}>
-          <View style={styles.dayNumberBadge}>
-            <Text style={styles.dayNumberLabel}>
-              DAY {currentBatch.dayNumber} OF 4
+          <View style={[
+            styles.dayNumberBadge,
+            currentBatch.dayNumber === 5 && { backgroundColor: '#EF4444' }
+          ]}>
+            <Text style={[
+              styles.dayNumberLabel,
+              currentBatch.dayNumber === 5 && { color: '#FFFFFF' }
+            ]}>
+              {currentBatch.dayNumber === 5 ? 'DAY 5 (EXT)' : `DAY ${currentBatch.dayNumber} OF 4`}
             </Text>
           </View>
           <Text style={styles.dayStatusText}>
             {currentBatch.dayNumber === 1 
-              ? 'First Day at Market • Base NCC Cess Covered' 
-              : `Consecutive Day • Demurrage: Ksh ${(currentBatch.dayNumber - 1) * 1000} incurred`}
+              ? 'Day 1: Base NCC Cess (Nets Counted & Covered)' 
+              : currentBatch.dayNumber === 5
+                ? 'Day 5: Negotiated Extension • NCC Flat Fee: Ksh 1,000'
+                : `Day ${currentBatch.dayNumber} of 4: NCC Flat Fee: Ksh 1,000 (No Recount)`}
           </Text>
         </View>
       )}

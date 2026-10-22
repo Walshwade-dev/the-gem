@@ -11,6 +11,7 @@ import {
   CasualLaborer, 
   SellerAllocation,
   CustomerCredit, 
+  CreditEntry,
   CreditRepayment, 
   DailyReconciliation, 
   UserRole,
@@ -319,7 +320,11 @@ const INITIAL_CUSTOMER_CREDITS: CustomerCredit[] = [
         id: 'cred-entry-001',
         saleId: 'sale-004',
         batchId: SEED_BATCH_ID,
+        truckPlate: 'KDE 421B',
+        originRegion: 'Northern Tanzania (Singida / Karatu / Arusha)',
+        originSpecificLocation: 'Singida - Iramba Farm Section B',
         dateIssued: TODAY_STR,
+        authorizedBy: 'Main Merchant (Admin)',
         grade: 'GRADE_2',
         quantityNets: 10,
         totalOwed: 21000,
@@ -341,7 +346,11 @@ const INITIAL_CUSTOMER_CREDITS: CustomerCredit[] = [
         id: 'cred-entry-past-01',
         saleId: 'sale-past-99',
         batchId: 'batch-previous-week',
+        truckPlate: 'KDC 901P',
+        originRegion: 'Kajiado South (Oloitokitok / Rom / Kimana)',
+        originSpecificLocation: 'Oloitokitok - Rom Border Zone',
         dateIssued: '2026-10-20',
+        authorizedBy: 'Main Merchant (Admin)',
         grade: 'GRADE_1',
         quantityNets: 5,
         totalOwed: 12500,
@@ -352,6 +361,12 @@ const INITIAL_CUSTOMER_CREDITS: CustomerCredit[] = [
           {
             id: 'rep-001',
             creditEntryId: 'cred-entry-past-01',
+            batchId: 'batch-previous-week',
+            truckPlate: 'KDC 901P',
+            originRegion: 'Kajiado South (Oloitokitok / Rom / Kimana)',
+            originSpecificLocation: 'Oloitokitok - Rom Border Zone',
+            dateIssued: '2026-10-20',
+            authorizedBy: 'Main Merchant (Admin)',
             timestamp: `${TODAY_STR}T10:00:00.000Z`,
             amountPaid: 5000,
             paymentMethod: 'MPESA',
@@ -368,6 +383,12 @@ const INITIAL_REPAYMENTS: CreditRepayment[] = [
   {
     id: 'rep-001',
     creditEntryId: 'cred-entry-past-01',
+    batchId: 'batch-previous-week',
+    truckPlate: 'KDC 901P',
+    originRegion: 'Kajiado South (Oloitokitok / Rom / Kimana)',
+    originSpecificLocation: 'Oloitokitok - Rom Border Zone',
+    dateIssued: '2026-10-20',
+    authorizedBy: 'Main Merchant (Admin)',
     timestamp: `${TODAY_STR}T10:00:00.000Z`,
     amountPaid: 5000,
     paymentMethod: 'MPESA',
@@ -494,31 +515,33 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   advanceBatchDay: () => {
     const current = get().currentBatch;
-    if (!current || current.dayNumber >= MARKET_CONFIG.maxTruckStayDays) return;
+    if (!current || current.dayNumber >= MARKET_CONFIG.negotiatedMaxTruckStayDays) return;
 
     const nextDay = current.dayNumber + 1;
-    const demurrage = calculateDemurrageFee(nextDay);
+    const isNegotiatedExtension = nextDay === 5;
     const today = new Date().toISOString().split('T')[0];
 
-    // Add demurrage expense if > Day 1
+    // Add NCC flat fee for consecutive day (Days 2 to 4, and Day 5 on negotiation - no recount!)
     const demurrageExp: DailyExpense = {
       id: `exp-demurrage-day${nextDay}-${Date.now()}`,
       batchId: current.id,
       date: today,
       category: 'DEMURRAGE',
-      description: `Wakulima Market Day ${nextDay} Truck Demurrage Fee`,
-      amount: MARKET_CONFIG.demurrageRatePerConsecutiveDay,
+      description: isNegotiatedExtension 
+        ? 'Wakulima Market Day 5 (Negotiated Extension) NCC Flat Fee' 
+        : `Wakulima Market Day ${nextDay} NCC Daily Flat Fee (No Recount)`,
+      amount: MARKET_CONFIG.nccRules.consecutiveDayFlatFee,
       paidVia: 'CASH'
     };
 
-    // Auto-append daily security + cleaner
+    // Auto-append daily security + cleaner (paid daily as long as truck & sales are active in the market)
     const dailyFixed: DailyExpense[] = [
       {
         id: `exp-watchman-day${nextDay}-${Date.now()}`,
         batchId: current.id,
         date: today,
         category: 'WATCHMAN',
-        description: `Day ${nextDay} Overnight watchman security`,
+        description: `Day ${nextDay} Overnight watchman security fee`,
         amount: MARKET_CONFIG.fixedDailyFees.watchman,
         paidVia: 'CASH'
       },
@@ -527,7 +550,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         batchId: current.id,
         date: today,
         category: 'CLEANER',
-        description: `Day ${nextDay} Market bay cleaning fee`,
+        description: `Day ${nextDay} Market bay cleaning & sanitation`,
         amount: MARKET_CONFIG.fixedDailyFees.cleaner,
         paidVia: 'CASH'
       }
@@ -536,7 +559,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     set(state => ({
       currentBatch: state.currentBatch ? {
         ...state.currentBatch,
-        dayNumber: nextDay
+        dayNumber: nextDay,
+        isNegotiatedExtension
       } : null,
       expenses: [...state.expenses, demurrageExp, ...dailyFixed]
     }));
@@ -601,17 +625,21 @@ export const useAppStore = create<AppState>((set, get) => ({
     const totalAmount = params.quantityNets * params.negotiatedUnitPrice;
     let creditRecordId: string | undefined = undefined;
 
-    // Handle Credit transaction
+    // Handle Credit transaction with full stock lineage (Truck ID, Origin, Date, Authorizer)
     if (params.paymentMethod === 'CREDIT') {
       creditRecordId = `cred-entry-${Date.now()}`;
       const customerName = params.buyerName || 'Valued Regular Buyer';
       const customerPhone = params.buyerPhone || '+254700000000';
 
-      const newCreditEntry = {
+      const newCreditEntry: CreditEntry = {
         id: creditRecordId,
         saleId,
         batchId: currentBatch.id,
+        truckPlate: currentBatch.truckPlate,
+        originRegion: currentBatch.origin.regionName,
+        originSpecificLocation: currentBatch.origin.specificLocation,
         dateIssued: new Date().toISOString().split('T')[0],
+        authorizedBy: get().currentUserName,
         grade: params.grade,
         quantityNets: params.quantityNets,
         totalOwed: totalAmount,
@@ -682,9 +710,26 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   recordCreditRepayment: (params) => {
     const repaymentId = `rep-${Date.now()}`;
+    
+    // Look up target credit entry to preserve complete lineage
+    let targetEntry: CreditEntry | undefined;
+    for (const cust of get().customerCredits) {
+      const match = cust.records.find(r => r.id === params.creditEntryId);
+      if (match) {
+        targetEntry = match;
+        break;
+      }
+    }
+
     const repayment: CreditRepayment = {
       id: repaymentId,
       creditEntryId: params.creditEntryId,
+      batchId: targetEntry ? targetEntry.batchId : 'unknown-batch',
+      truckPlate: targetEntry ? targetEntry.truckPlate : 'unknown-plate',
+      originRegion: targetEntry ? targetEntry.originRegion : 'unknown-origin',
+      originSpecificLocation: targetEntry ? targetEntry.originSpecificLocation : '',
+      dateIssued: targetEntry ? targetEntry.dateIssued : new Date().toISOString().split('T')[0],
+      authorizedBy: targetEntry ? targetEntry.authorizedBy : get().currentUserName,
       timestamp: new Date().toISOString(),
       amountPaid: params.amount,
       paymentMethod: params.paymentMethod,
