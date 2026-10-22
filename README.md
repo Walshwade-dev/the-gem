@@ -1,6 +1,8 @@
 # The Gem: Onion Sales Tracker
 ### Wakulima Market (Marikiti) Wholesale Management Suite
 
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/Walshwade-dev/the-gem)
+
 ---
 
 ## 📌 Overview
@@ -76,15 +78,28 @@ npx expo start
 
 This project includes a native Render Blueprint ([`render.yaml`](render.yaml)) configured for zero-config **Static Site** deployment on Render's global CDN:
 
-1. **Push to GitHub** (see repository setup below).
-2. Go to your **[Render Dashboard](https://dashboard.render.com/)**.
-3. Click **New +** $\rightarrow$ **Static Site** (or **Blueprint**).
-4. Connect your GitHub repository `Walshwade-dev/the-gem`.
-5. Render will automatically read `render.yaml` or you can verify:
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/Walshwade-dev/the-gem)
+
+### Method 1: Instant 1-Click Blueprint Deploy
+Simply open this link in your browser:
+**👉 [Deploy The Gem on Render](https://render.com/deploy?repo=https://github.com/Walshwade-dev/the-gem)**
+
+Render will automatically detect `render.yaml`, set up the build command (`npm install && npm run build`), and deploy to `./dist`.
+
+### Method 2: Manual Setup via Dashboard
+1. Go to your **[Render Dashboard](https://dashboard.render.com/)**.
+2. Click **New +** $\rightarrow$ **Static Site**.
+3. Connect your GitHub repository `Walshwade-dev/the-gem`.
+4. Fill in the build settings:
+   - **Name:** `the-gem` (or custom)
+   - **Branch:** `main`
    - **Build Command:** `npm install && npm run build`
    - **Publish Directory:** `dist`
-   - **SPA Routing Rewrite:** `/*` $\rightarrow$ `/index.html`
-6. Click **Create Static Site** — your live link will be generated (e.g. `https://the-gem.onrender.com`).
+5. Under **Advanced / Rewrites**, add an SPA rewrite rule:
+   - **Type:** `Rewrite`
+   - **Source:** `/*`
+   - **Destination:** `/index.html`
+6. Click **Create Static Site** — your public link will be live in ~1 minute (e.g. `https://the-gem.onrender.com`).
 
 ---
 
