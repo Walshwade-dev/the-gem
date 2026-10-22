@@ -69,10 +69,15 @@ export const SellerManagementModal: React.FC<SellerManagementModalProps> = ({ vi
     <Modal visible={visible} animationType="slide" transparent>
       <View style={styles.overlay}>
         <View style={styles.modalCard}>
+          {/* Mobile Bottom-Sheet Drag Handle */}
+          <View style={styles.dragHandleContainer}>
+            <View style={styles.dragHandle} />
+          </View>
+
           {/* Header */}
           <View style={styles.header}>
             <View style={styles.titleRow}>
-              <MaterialCommunityIcons name="account-tie" size={24} color={THEME.colors.primary} />
+              <MaterialCommunityIcons name="account-tie" size={24} color="#0891B2" />
               <View>
                 <Text style={styles.title}>HIRED SELLER DELEGATION</Text>
                 <Text style={styles.subtitle}>Set Opening Quota & Target Prices for Sales Staff</Text>
@@ -188,19 +193,34 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.6)',
     justifyContent: 'flex-end',
+    alignItems: 'center',
   },
   modalCard: {
     backgroundColor: '#FFFFFF',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    maxHeight: '90%',
+    width: '100%',
+    maxWidth: 500,
+    maxHeight: '92%',
     paddingBottom: 24,
+  },
+  dragHandleContainer: {
+    alignItems: 'center',
+    paddingTop: 10,
+    paddingBottom: 2,
+  },
+  dragHandle: {
+    width: 40,
+    height: 4.5,
+    borderRadius: 3,
+    backgroundColor: '#CBD5E1',
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 18,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
     borderBottomWidth: 1,
     borderBottomColor: '#F1F5F9',
   },
@@ -212,7 +232,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 13,
     fontWeight: '800',
-    color: THEME.colors.primary,
+    color: '#0891B2',
   },
   subtitle: {
     fontSize: 11,
@@ -222,7 +242,7 @@ const styles = StyleSheet.create({
     padding: 6,
   },
   body: {
-    padding: 18,
+    padding: 16,
   },
   formBox: {
     backgroundColor: '#F8FAFC',
@@ -235,7 +255,7 @@ const styles = StyleSheet.create({
   formTitle: {
     fontSize: 11,
     fontWeight: '800',
-    color: THEME.colors.primary,
+    color: '#0891B2',
     marginBottom: 10,
   },
   label: {

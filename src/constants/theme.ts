@@ -1,22 +1,23 @@
 // ============================================================================
 // The Gem: Visual Theme & Styling Tokens
-// High-Contrast Outdoor Readability for Wakulima Market Trading
+// Merchant Brand: Vibrant Turquoise Blue with High-Contrast Mobile-First Layout
 // ============================================================================
 
 export const THEME = {
   colors: {
-    // Brand Jewel Colors (Deep Red Onion Skin & Gemstone Ruby)
-    primary: '#881337',       // Deep Onion Ruby
-    primaryLight: '#9F1239',  // Vibrant Onion Crimson
-    primaryDark: '#4C0519',   // Deepest Burgundy
-    primarySoft: '#FFE4E6',   // Soft Rose Tint for Cards
+    // Merchant Brand Color: Vibrant Turquoise Blue
+    primary: '#0891B2',       // Vibrant Turquoise Blue (Cyan 600)
+    primaryLight: '#06B6D4',  // Electric Turquoise (Cyan 500)
+    primaryDark: '#164E63',   // Deep Turquoise Teal (Cyan 900)
+    primarySoft: '#ECFEFF',   // Ice Turquoise Surface Tint (Cyan 50)
+    primaryBorder: '#A5F3FC', // Accent Turquoise Border (Cyan 200)
 
-    // Produce Gold & Papery Shallot Amber
+    // Secondary Accent: Golden Amber for Produce & Grades
     secondary: '#D97706',     // Dried Onion Amber
     secondaryLight: '#F59E0B',// Warm Harvest Gold
     secondarySoft: '#FEF3C7', // Soft Amber Background
 
-    // Kenyan Financial Emerald (M-Pesa & Cash Balance)
+    // Kenyan Financial Emerald (M-Pesa & Positive Balances)
     emerald: '#059669',       // M-Pesa Green
     emeraldDark: '#064E3B',
     emeraldSoft: '#D1FAE5',
@@ -26,15 +27,15 @@ export const THEME = {
     dangerSoft: '#FEE2E2',
     warning: '#D97706',       // Pending Credit, Approaching 4-day max
     warningSoft: '#FEF3C7',
-    info: '#2563EB',
-    infoSoft: '#DBEAFE',
+    info: '#0284C7',          // Sky Info Blue
+    infoSoft: '#E0F2FE',
 
     // High-Contrast Daylight Palette (Optimized for bright outdoor market conditions)
-    background: '#F8FAFC',    // Off-white slate
+    background: '#F0FDFA',    // Ultra-soft mint/turquoise-tinted slate background
     surface: '#FFFFFF',       // Pure white cards
     surfaceElevated: '#FFFFFF',
     border: '#E2E8F0',
-    borderFocus: '#881337',
+    borderFocus: '#0891B2',
 
     // Text Levels
     textPrimary: '#0F172A',   // Slate 900 (High contrast dark)
@@ -49,14 +50,14 @@ export const THEME = {
 
   typography: {
     sizes: {
-      xs: 12,
-      sm: 14,
-      base: 16,
-      lg: 18,
-      xl: 20,
-      '2xl': 24,
-      '3xl': 30,
-      '4xl': 36,
+      xs: 11,
+      sm: 13,
+      base: 15,
+      lg: 17,
+      xl: 19,
+      '2xl': 22,
+      '3xl': 28,
+      '4xl': 34,
     },
     weights: {
       regular: '400' as const,
@@ -81,13 +82,13 @@ export const THEME = {
     sm: 6,
     md: 10,
     lg: 14,
-    xl: 20,
+    xl: 18,
     full: 9999,
   },
 
-  // Touch Target Accessibility (Ensures wet/dusty thumbs can tap accurately)
+  // Mobile Touch Ergonomics
   touchTarget: {
-    minHeight: 52,
-    largeButtonHeight: 60,
+    minHeight: 48,
+    largeButtonHeight: 54,
   }
 };

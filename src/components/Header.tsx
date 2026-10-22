@@ -1,10 +1,12 @@
 // ============================================================================
-// The Gem: Onion Sales Tracker - Header Component
+// The Gem: Onion Sales Tracker - Header Component (Mobile-First)
+// Merchant Turquoise Blue Branding with Adaptive Safe Area & Touch Ergonomics
 // ============================================================================
 
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { THEME } from '../constants/theme';
 import { useAppStore } from '../store/useAppStore';
 
@@ -14,11 +16,11 @@ interface HeaderProps {
 }
 
 export const Header: React.FC<HeaderProps> = ({ onOpenAuth, onOpenCreditLedger }) => {
+  const insets = useSafeAreaInsets();
   const { 
     role, 
     setRole, 
     currentBatch, 
-    currentUserName, 
     lockdown,
     customerCredits
   } = useAppStore();
@@ -29,37 +31,38 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAuth, onOpenCreditLedger }
   );
 
   return (
-    <View style={styles.container}>
-      {/* Top Brand & Status Row */}
+    <View style={[styles.container, { paddingTop: Math.max(insets.top, 12) + 8 }]}>
+      {/* Top Brand & Actions Bar */}
       <View style={styles.topRow}>
         <View style={styles.brandContainer}>
           <View style={styles.logoBadge}>
             <MaterialCommunityIcons name="diamond-stone" size={20} color="#FBBF24" />
-            <MaterialCommunityIcons name="food-apple" size={16} color="#FFE4E6" style={styles.onionIcon} />
+            <MaterialCommunityIcons name="food-apple" size={14} color="#CFFAFE" style={styles.onionIcon} />
           </View>
-          <View>
+          <View style={styles.brandTextCol}>
             <View style={styles.titleRow}>
               <Text style={styles.brandTitle}>The Gem</Text>
               <View style={styles.subBadge}>
                 <Text style={styles.subBadgeText}>ONION TRACKER</Text>
               </View>
             </View>
-            <Text style={styles.marketSubtitle}>Wakulima Market (Marikiti) • Nairobi</Text>
+            <Text style={styles.marketSubtitle} numberOfLines={1}>
+              Wakulima Market (Marikiti) • Nairobi
+            </Text>
           </View>
         </View>
 
         {/* Action Controls */}
         <View style={styles.actionsGroup}>
-          {/* Madeni (Credit) Badge - Clickable */}
           {role === 'MERCHANT' && (
             <TouchableOpacity 
               style={styles.creditPill}
               onPress={onOpenCreditLedger}
               activeOpacity={0.8}
             >
-              <Ionicons name="receipt-outline" size={14} color="#B45309" />
+              <Ionicons name="receipt-outline" size={13} color="#92400E" />
               <Text style={styles.creditPillText}>
-                Deni: Ksh {(totalOutstandingCredit / 1000).toFixed(0)}k
+                Ksh {(totalOutstandingCredit / 1000).toFixed(0)}k
               </Text>
             </TouchableOpacity>
           )}
@@ -67,17 +70,16 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAuth, onOpenCreditLedger }
           {/* Emergency Panic Lockdown Button */}
           <TouchableOpacity 
             style={styles.panicButton}
-            onPress={() => lockdown('Manual Emergency Panic triggered by user')}
+            onPress={() => lockdown('Manual Emergency Panic triggered by merchant')}
             activeOpacity={0.7}
           >
-            <Ionicons name="shield-half" size={16} color="#EF4444" />
+            <Ionicons name="shield-half" size={15} color="#EF4444" />
           </TouchableOpacity>
         </View>
       </View>
 
-      {/* Role Switcher & Operational Banner */}
+      {/* Role Switcher & Auth Pill */}
       <View style={styles.roleBanner}>
-        {/* Role Toggle Selector */}
         <View style={styles.roleToggleGroup}>
           <TouchableOpacity 
             style={[styles.roleTab, role === 'MERCHANT' && styles.roleTabActiveMerchant]}
@@ -85,11 +87,11 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAuth, onOpenCreditLedger }
           >
             <Ionicons 
               name="shield-checkmark" 
-              size={14} 
-              color={role === 'MERCHANT' ? '#FFFFFF' : THEME.colors.textSecondary} 
+              size={13} 
+              color={role === 'MERCHANT' ? '#FFFFFF' : '#CFFAFE'} 
             />
             <Text style={[styles.roleTabText, role === 'MERCHANT' && styles.roleTabTextActive]}>
-              Merchant (Owner)
+              Merchant
             </Text>
           </TouchableOpacity>
 
@@ -99,21 +101,19 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAuth, onOpenCreditLedger }
           >
             <Ionicons 
               name="person" 
-              size={14} 
-              color={role === 'SELLER' ? '#FFFFFF' : THEME.colors.textSecondary} 
+              size={13} 
+              color={role === 'SELLER' ? '#FFFFFF' : '#CFFAFE'} 
             />
             <Text style={[styles.roleTabText, role === 'SELLER' && styles.roleTabTextActive]}>
-              Hired Seller
+              Seller
             </Text>
           </TouchableOpacity>
         </View>
 
-        {/* Current Active User / Auth Button */}
+        {/* Active Session Badge */}
         <TouchableOpacity style={styles.userBadge} onPress={onOpenAuth}>
-          <Ionicons name="call-outline" size={12} color={THEME.colors.textSecondary} />
-          <Text style={styles.userBadgeText} numberOfLines={1}>
-            {role === 'MERCHANT' ? 'Merchant' : 'Seller'}: OTP Verified
-          </Text>
+          <Ionicons name="call" size={11} color="#E0F2FE" />
+          <Text style={styles.userBadgeText}>OTP Active</Text>
         </TouchableOpacity>
       </View>
 
@@ -131,12 +131,12 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAuth, onOpenCreditLedger }
               {currentBatch.dayNumber === 5 ? 'DAY 5 (EXT)' : `DAY ${currentBatch.dayNumber} OF 4`}
             </Text>
           </View>
-          <Text style={styles.dayStatusText}>
+          <Text style={styles.dayStatusText} numberOfLines={1}>
             {currentBatch.dayNumber === 1 
               ? 'Day 1: Base NCC Cess (Nets Counted & Covered)' 
               : currentBatch.dayNumber === 5
-                ? 'Day 5: Negotiated Extension • NCC Flat Fee: Ksh 1,000'
-                : `Day ${currentBatch.dayNumber} of 4: NCC Flat Fee: Ksh 1,000 (No Recount)`}
+                ? 'Day 5: Negotiated Extension • Flat Ksh 1,000'
+                : `Day ${currentBatch.dayNumber} of 4: Flat Ksh 1,000 (No Recount)`}
           </Text>
         </View>
       )}
@@ -147,32 +147,37 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAuth, onOpenCreditLedger }
 const styles = StyleSheet.create({
   container: {
     backgroundColor: THEME.colors.primary,
-    paddingTop: 48,
-    paddingHorizontal: THEME.spacing.lg,
-    paddingBottom: THEME.spacing.md,
+    paddingHorizontal: 16,
+    paddingBottom: 14,
     borderBottomLeftRadius: THEME.borderRadius.xl,
     borderBottomRightRadius: THEME.borderRadius.xl,
+    shadowColor: '#0891B2',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 4,
   },
   topRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: THEME.spacing.md,
+    marginBottom: 12,
   },
   brandContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: THEME.spacing.md,
+    gap: 10,
+    flex: 1,
   },
   logoBadge: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: THEME.colors.primaryDark,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1.5,
-    borderColor: '#F59E0B',
+    borderColor: '#38BDF8',
     position: 'relative',
   },
   onionIcon: {
@@ -180,14 +185,18 @@ const styles = StyleSheet.create({
     bottom: 2,
     right: 2,
   },
+  brandTextCol: {
+    flex: 1,
+  },
   titleRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    flexWrap: 'wrap',
   },
   brandTitle: {
-    fontSize: THEME.typography.sizes['2xl'],
-    fontWeight: THEME.typography.weights.heavy,
+    fontSize: 20,
+    fontWeight: '900',
     color: '#FFFFFF',
     letterSpacing: 0.5,
   },
@@ -198,40 +207,42 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   subBadgeText: {
-    fontSize: 9,
-    fontWeight: '800',
+    fontSize: 8.5,
+    fontWeight: '900',
     color: '#451A03',
+    letterSpacing: 0.3,
   },
   marketSubtitle: {
-    fontSize: THEME.typography.sizes.xs,
-    color: '#FECDD3',
-    fontWeight: THEME.typography.weights.medium,
+    fontSize: 11,
+    color: '#E0F2FE',
+    fontWeight: '500',
+    marginTop: 1,
   },
   actionsGroup: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
   },
   creditPill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
     backgroundColor: '#FEF3C7',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 20,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: '#FCD34D',
   },
   creditPillText: {
     fontSize: 11,
-    fontWeight: '700',
+    fontWeight: '800',
     color: '#92400E',
   },
   panicButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     backgroundColor: '#FEE2E2',
     justifyContent: 'center',
     alignItems: 'center',
@@ -242,10 +253,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.25)',
-    padding: 6,
-    borderRadius: THEME.borderRadius.lg,
-    marginBottom: THEME.spacing.sm,
+    backgroundColor: 'rgba(22, 78, 99, 0.45)', // Deep turquoise translucent
+    padding: 5,
+    borderRadius: THEME.borderRadius.md,
+    marginBottom: 8,
   },
   roleToggleGroup: {
     flexDirection: 'row',
@@ -254,25 +265,25 @@ const styles = StyleSheet.create({
   roleTab: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
+    gap: 4,
     paddingVertical: 6,
     paddingHorizontal: 10,
-    borderRadius: THEME.borderRadius.md,
+    borderRadius: 8,
   },
   roleTabActiveMerchant: {
-    backgroundColor: '#059669', // Emerald green for merchant
+    backgroundColor: '#164E63', // Deep turquoise teal
   },
   roleTabActiveSeller: {
-    backgroundColor: '#D97706', // Amber gold for seller
+    backgroundColor: '#D97706', // Amber gold
   },
   roleTabText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#CBD5E1',
+    color: '#CFFAFE',
   },
   roleTabTextActive: {
     color: '#FFFFFF',
-    fontWeight: '700',
+    fontWeight: '800',
   },
   userBadge: {
     flexDirection: 'row',
@@ -281,21 +292,20 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.15)',
     paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: 12,
+    borderRadius: 10,
   },
   userBadgeText: {
     fontSize: 10,
-    color: '#F1F5F9',
-    fontWeight: '600',
+    color: '#FFFFFF',
+    fontWeight: '700',
   },
   dayTrackerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.12)',
+    backgroundColor: 'rgba(255, 255, 255, 0.18)',
     paddingVertical: 6,
     paddingHorizontal: 10,
     borderRadius: 8,
-    marginTop: 2,
     gap: 8,
   },
   dayNumberBadge: {
@@ -305,14 +315,14 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   dayNumberLabel: {
-    fontSize: 10,
-    fontWeight: '800',
+    fontSize: 9.5,
+    fontWeight: '900',
     color: '#451A03',
   },
   dayStatusText: {
     fontSize: 11,
-    color: '#F8FAFC',
-    fontWeight: '500',
+    color: '#FFFFFF',
+    fontWeight: '600',
     flex: 1,
   }
 });

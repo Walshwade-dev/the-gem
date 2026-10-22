@@ -74,11 +74,16 @@ export const CreditLedgerModal: React.FC<CreditLedgerModalProps> = ({ visible, o
     <Modal visible={visible} animationType="slide" transparent>
       <View style={styles.overlay}>
         <View style={styles.modalCard}>
+          {/* Mobile Drag Handle */}
+          <View style={styles.dragHandleContainer}>
+            <View style={styles.dragHandle} />
+          </View>
+
           {/* Header */}
           <View style={styles.header}>
             <View>
               <View style={styles.titleRow}>
-                <Ionicons name="receipt" size={20} color={THEME.colors.primary} />
+                <Ionicons name="receipt" size={20} color="#0891B2" />
                 <Text style={styles.title}>CREDIT LEDGER (KITABU CHA MADENI)</Text>
               </View>
               <Text style={styles.subtitle}>
@@ -233,19 +238,34 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.6)',
     justifyContent: 'flex-end',
+    alignItems: 'center',
   },
   modalCard: {
     backgroundColor: '#FFFFFF',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    height: '85%',
+    width: '100%',
+    maxWidth: 500,
+    height: '88%',
     paddingBottom: 20,
+  },
+  dragHandleContainer: {
+    alignItems: 'center',
+    paddingTop: 10,
+    paddingBottom: 2,
+  },
+  dragHandle: {
+    width: 40,
+    height: 4.5,
+    borderRadius: 3,
+    backgroundColor: '#CBD5E1',
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 18,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
     borderBottomWidth: 1,
     borderBottomColor: '#F1F5F9',
   },
@@ -257,7 +277,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 13,
     fontWeight: '800',
-    color: THEME.colors.primary,
+    color: '#0891B2',
   },
   subtitle: {
     fontSize: 12,

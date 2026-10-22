@@ -62,10 +62,15 @@ export const ReconciliationModal: React.FC<ReconciliationModalProps> = ({ visibl
     <Modal visible={visible} animationType="slide" transparent>
       <View style={styles.overlay}>
         <View style={styles.modalCard}>
+          {/* Mobile Bottom-Sheet Drag Handle */}
+          <View style={styles.dragHandleContainer}>
+            <View style={styles.dragHandle} />
+          </View>
+
           {/* Header */}
           <View style={styles.header}>
             <View style={styles.titleRow}>
-              <MaterialCommunityIcons name="scale-balance" size={24} color={THEME.colors.primary} />
+              <MaterialCommunityIcons name="scale-balance" size={24} color="#0891B2" />
               <View>
                 <Text style={styles.title}>14:00 COB RECONCILIATION</Text>
                 <Text style={styles.subtitle}>Wakulima Market End-of-Day Close (Hesabu ya Siku)</Text>
@@ -191,19 +196,34 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.6)',
     justifyContent: 'flex-end',
+    alignItems: 'center',
   },
   modalCard: {
     backgroundColor: '#FFFFFF',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    maxHeight: '90%',
+    width: '100%',
+    maxWidth: 500,
+    maxHeight: '92%',
     paddingBottom: 24,
+  },
+  dragHandleContainer: {
+    alignItems: 'center',
+    paddingTop: 10,
+    paddingBottom: 2,
+  },
+  dragHandle: {
+    width: 40,
+    height: 4.5,
+    borderRadius: 3,
+    backgroundColor: '#CBD5E1',
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 18,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
     borderBottomWidth: 1,
     borderBottomColor: '#F1F5F9',
   },
@@ -213,9 +233,9 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   title: {
-    fontSize: 14,
+    fontSize: 13.5,
     fontWeight: '800',
-    color: THEME.colors.primary,
+    color: '#0891B2',
   },
   subtitle: {
     fontSize: 11,
@@ -225,12 +245,12 @@ const styles = StyleSheet.create({
     padding: 6,
   },
   body: {
-    padding: 18,
+    padding: 16,
   },
   stepSection: {
-    marginBottom: 20,
+    marginBottom: 16,
     backgroundColor: '#F8FAFC',
-    padding: 14,
+    padding: 12,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: '#E2E8F0',
@@ -245,7 +265,7 @@ const styles = StyleSheet.create({
     width: 22,
     height: 22,
     borderRadius: 11,
-    backgroundColor: THEME.colors.primary,
+    backgroundColor: '#0891B2',
     justifyContent: 'center',
     alignItems: 'center',
   },

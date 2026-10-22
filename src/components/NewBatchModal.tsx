@@ -97,10 +97,15 @@ export const NewBatchModal: React.FC<NewBatchModalProps> = ({ visible, onClose }
     <Modal visible={visible} animationType="slide" transparent>
       <View style={styles.overlay}>
         <View style={styles.modalCard}>
+          {/* Mobile Bottom-Sheet Drag Handle */}
+          <View style={styles.dragHandleContainer}>
+            <View style={styles.dragHandle} />
+          </View>
+
           {/* Header */}
           <View style={styles.header}>
             <View style={styles.titleRow}>
-              <MaterialCommunityIcons name="truck-delivery" size={24} color={THEME.colors.primary} />
+              <MaterialCommunityIcons name="truck-delivery" size={24} color="#0891B2" />
               <View>
                 <Text style={styles.title}>REGISTER ARRIVING TRUCK (05:00 AM)</Text>
                 <Text style={styles.subtitle}>Wakulima Market Municipal Entry & Opening Stock</Text>
@@ -202,7 +207,7 @@ export const NewBatchModal: React.FC<NewBatchModalProps> = ({ visible, onClose }
               <View style={[styles.fieldGroup, { flex: 1 }]}>
                 <Text style={styles.label}>GRADE 1 NETS (KUBWA)</Text>
                 <TextInput
-                  style={[styles.textInput, { borderColor: '#881337', borderWidth: 2 }]}
+                  style={[styles.textInput, { borderColor: '#0891B2', borderWidth: 2 }]}
                   keyboardType="numeric"
                   value={initialG1}
                   onChangeText={setInitialG1}
@@ -239,19 +244,34 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.6)',
     justifyContent: 'flex-end',
+    alignItems: 'center',
   },
   modalCard: {
     backgroundColor: '#FFFFFF',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
+    width: '100%',
+    maxWidth: 500,
     maxHeight: '92%',
     paddingBottom: 24,
+  },
+  dragHandleContainer: {
+    alignItems: 'center',
+    paddingTop: 10,
+    paddingBottom: 2,
+  },
+  dragHandle: {
+    width: 40,
+    height: 4.5,
+    borderRadius: 3,
+    backgroundColor: '#CBD5E1',
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 18,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
     borderBottomWidth: 1,
     borderBottomColor: '#F1F5F9',
   },

@@ -331,16 +331,16 @@ export const SalesLogger: React.FC = () => {
 
 const styles = StyleSheet.create({
   container: {
-    marginHorizontal: THEME.spacing.lg,
-    marginVertical: THEME.spacing.md,
+    marginHorizontal: 14,
+    marginVertical: 10,
   },
   card: {
     backgroundColor: THEME.colors.surface,
     borderRadius: THEME.borderRadius.lg,
-    padding: THEME.spacing.lg,
+    padding: 14,
     borderWidth: 1,
     borderColor: THEME.colors.border,
-    shadowColor: '#000',
+    shadowColor: '#0891B2',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.06,
     shadowRadius: 6,
@@ -399,8 +399,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   gradeButtonActiveG1: {
-    backgroundColor: '#881337',
-    borderColor: '#881337',
+    backgroundColor: '#0891B2', // Turquoise Blue
+    borderColor: '#0891B2',
   },
   gradeButtonActiveG2: {
     backgroundColor: '#D97706',
@@ -420,7 +420,7 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   textWhiteLight: {
-    color: '#FDE68A',
+    color: '#CFFAFE',
   },
   quantityRow: {
     flexDirection: 'row',

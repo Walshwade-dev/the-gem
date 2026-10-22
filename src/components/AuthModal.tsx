@@ -79,10 +79,15 @@ export const AuthModal: React.FC<AuthModalProps> = ({ visible, onClose }) => {
     <Modal visible={visible} animationType="slide" transparent>
       <View style={styles.overlay}>
         <View style={styles.modalCard}>
+          {/* Mobile Bottom-Sheet Drag Handle */}
+          <View style={styles.dragHandleContainer}>
+            <View style={styles.dragHandle} />
+          </View>
+
           {/* Header */}
           <View style={styles.header}>
             <View style={styles.titleRow}>
-              <MaterialCommunityIcons name="cellphone-key" size={24} color={THEME.colors.primary} />
+              <MaterialCommunityIcons name="cellphone-key" size={24} color="#0891B2" />
               <View>
                 <Text style={styles.title}>PHONE + SMS OTP SECURITY</Text>
                 <Text style={styles.subtitle}>Cryptographic Access for Market Operations</Text>
@@ -172,12 +177,26 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.6)',
     justifyContent: 'flex-end',
+    alignItems: 'center',
   },
   modalCard: {
     backgroundColor: '#FFFFFF',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     paddingBottom: 28,
+    width: '100%',
+    maxWidth: 500,
+  },
+  dragHandleContainer: {
+    alignItems: 'center',
+    paddingTop: 10,
+    paddingBottom: 2,
+  },
+  dragHandle: {
+    width: 40,
+    height: 4.5,
+    borderRadius: 3,
+    backgroundColor: '#CBD5E1',
   },
   header: {
     flexDirection: 'row',
@@ -230,8 +249,8 @@ const styles = StyleSheet.create({
     borderColor: '#CBD5E1',
   },
   roleBtnActiveMerchant: {
-    backgroundColor: '#059669',
-    borderColor: '#059669',
+    backgroundColor: THEME.colors.primary,
+    borderColor: THEME.colors.primary,
   },
   roleBtnActiveSeller: {
     backgroundColor: '#D97706',

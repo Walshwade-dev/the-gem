@@ -94,10 +94,15 @@ export const ExpensesLaborModal: React.FC<ExpensesLaborModalProps> = ({ visible,
     <Modal visible={visible} animationType="slide" transparent>
       <View style={styles.overlay}>
         <View style={styles.modalCard}>
+          {/* Mobile Bottom-Sheet Drag Handle */}
+          <View style={styles.dragHandleContainer}>
+            <View style={styles.dragHandle} />
+          </View>
+
           {/* Header */}
           <View style={styles.header}>
             <View style={styles.titleRow}>
-              <MaterialCommunityIcons name="account-hard-hat" size={24} color={THEME.colors.primary} />
+              <MaterialCommunityIcons name="account-hard-hat" size={24} color="#0891B2" />
               <View>
                 <Text style={styles.title}>EXPENSES & CASUAL LABOR (VIBARUA)</Text>
                 <Text style={styles.subtitle}>Mandatory Overheads & Individual Negotiated Pay</Text>
@@ -262,19 +267,34 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.6)',
     justifyContent: 'flex-end',
+    alignItems: 'center',
   },
   modalCard: {
     backgroundColor: '#FFFFFF',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
+    width: '100%',
+    maxWidth: 500,
     height: '88%',
     paddingBottom: 24,
+  },
+  dragHandleContainer: {
+    alignItems: 'center',
+    paddingTop: 10,
+    paddingBottom: 2,
+  },
+  dragHandle: {
+    width: 40,
+    height: 4.5,
+    borderRadius: 3,
+    backgroundColor: '#CBD5E1',
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 18,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
     borderBottomWidth: 1,
     borderBottomColor: '#F1F5F9',
   },
@@ -286,7 +306,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 13,
     fontWeight: '800',
-    color: THEME.colors.primary,
+    color: '#0891B2',
   },
   subtitle: {
     fontSize: 11,
@@ -308,7 +328,7 @@ const styles = StyleSheet.create({
   },
   tabBtnActive: {
     borderBottomWidth: 2.5,
-    borderBottomColor: THEME.colors.primary,
+    borderBottomColor: '#0891B2',
     backgroundColor: '#FFFFFF',
   },
   tabBtnText: {
@@ -317,7 +337,7 @@ const styles = StyleSheet.create({
     color: THEME.colors.textSecondary,
   },
   tabBtnTextActive: {
-    color: THEME.colors.primary,
+    color: '#0891B2',
     fontWeight: '800',
   },
   body: {

@@ -158,12 +158,12 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: THEME.colors.surface,
     borderRadius: THEME.borderRadius.lg,
-    padding: THEME.spacing.lg,
-    marginHorizontal: THEME.spacing.lg,
-    marginBottom: THEME.spacing.md,
+    padding: 14,
+    marginHorizontal: 14,
+    marginBottom: 12,
     borderWidth: 1,
     borderColor: THEME.colors.border,
-    shadowColor: '#000',
+    shadowColor: '#0891B2',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.06,
     shadowRadius: 6,
@@ -183,7 +183,7 @@ const styles = StyleSheet.create({
   titleText: {
     fontSize: 12,
     fontWeight: '800',
-    color: THEME.colors.emeraldDark,
+    color: '#0E7490', // Deep Turquoise
     letterSpacing: 0.5,
   },
   dateBadge: {
@@ -202,35 +202,37 @@ const styles = StyleSheet.create({
   },
   balanceItem: {
     flex: 1,
-    backgroundColor: '#ECFDF5',
+    backgroundColor: '#ECFEFF', // Soft Turquoise
     padding: 12,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#A7F3D0',
+    borderColor: '#A5F3FC',
   },
   balanceLabel: {
     fontSize: 9,
     fontWeight: '800',
-    color: '#065F46',
+    color: '#0E7490',
     letterSpacing: 0.5,
     marginBottom: 4,
   },
   balanceAmount: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '900',
   },
   balanceBreakdown: {
     fontSize: 9,
-    color: '#047857',
+    color: '#0891B2',
     marginTop: 4,
   },
   statsRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 6,
     marginBottom: THEME.spacing.md,
   },
   statBox: {
     flex: 1,
+    minWidth: 100,
     backgroundColor: '#F8FAFC',
     padding: 8,
     borderRadius: 6,
@@ -239,6 +241,7 @@ const styles = StyleSheet.create({
   },
   statBoxAction: {
     flex: 1,
+    minWidth: 100,
     backgroundColor: '#FFF7ED',
     padding: 8,
     borderRadius: 6,
@@ -263,13 +266,18 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   reconcileButton: {
-    backgroundColor: '#0F172A',
+    backgroundColor: '#0891B2', // Vibrant Turquoise
     borderRadius: 10,
     paddingVertical: 12,
     paddingHorizontal: 14,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+    shadowColor: '#0891B2',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    elevation: 3,
   },
   reconcileBtnTitle: {
     color: '#FFFFFF',

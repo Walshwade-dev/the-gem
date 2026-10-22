@@ -92,14 +92,14 @@ export const BatchOverviewCard: React.FC<BatchOverviewCardProps> = ({
           </Text>
         </View>
 
-        {role === 'MERCHANT' && (
+          {role === 'MERCHANT' && (
           <View style={styles.headerActionRow}>
             <TouchableOpacity 
               style={styles.advanceDayBtn} 
               onPress={handleAdvanceDay}
               activeOpacity={0.8}
             >
-              <Ionicons name="calendar" size={14} color="#881337" />
+              <Ionicons name="calendar-outline" size={13} color="#0E7490" />
               <Text style={styles.advanceDayBtnText}>+ Day</Text>
             </TouchableOpacity>
 
@@ -108,7 +108,7 @@ export const BatchOverviewCard: React.FC<BatchOverviewCardProps> = ({
               onPress={onOpenSellerModal}
               activeOpacity={0.8}
             >
-              <Ionicons name="person-add" size={14} color="#059669" />
+              <Ionicons name="person-add-outline" size={13} color="#047857" />
               <Text style={styles.sellerAssignBtnText}>Assign Seller</Text>
             </TouchableOpacity>
           </View>
@@ -120,7 +120,7 @@ export const BatchOverviewCard: React.FC<BatchOverviewCardProps> = ({
         <View style={styles.originHeader}>
           <Ionicons 
             name={role === 'MERCHANT' ? "location" : "lock-closed"} 
-            size={16} 
+            size={15} 
             color={role === 'MERCHANT' ? THEME.colors.primary : THEME.colors.textMuted} 
           />
           <Text style={styles.originLabel}>
@@ -155,7 +155,7 @@ export const BatchOverviewCard: React.FC<BatchOverviewCardProps> = ({
         <View style={styles.stockItem}>
           <View style={styles.stockItemHeader}>
             <View style={styles.gradeTitleRow}>
-              <View style={[styles.gradeTag, { backgroundColor: '#881337' }]}>
+              <View style={[styles.gradeTag, { backgroundColor: '#0891B2' }]}>
                 <Text style={styles.gradeTagText}>G1</Text>
               </View>
               <View>
@@ -169,7 +169,7 @@ export const BatchOverviewCard: React.FC<BatchOverviewCardProps> = ({
             </Text>
           </View>
           <View style={styles.progressBarBg}>
-            <View style={[styles.progressBarFill, { width: `${g1Percent}%`, backgroundColor: '#881337' }]} />
+            <View style={[styles.progressBarFill, { width: `${g1Percent}%`, backgroundColor: '#0891B2' }]} />
           </View>
         </View>
 
@@ -226,10 +226,10 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: THEME.colors.surface,
     borderRadius: THEME.borderRadius.lg,
-    padding: THEME.spacing.lg,
-    marginHorizontal: THEME.spacing.lg,
-    marginTop: -THEME.spacing.sm,
-    shadowColor: '#000',
+    padding: 14,
+    marginHorizontal: 14,
+    marginTop: -10,
+    shadowColor: '#0891B2',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.08,
     shadowRadius: 8,
@@ -241,7 +241,7 @@ const styles = StyleSheet.create({
     backgroundColor: THEME.colors.surface,
     borderRadius: THEME.borderRadius.lg,
     padding: THEME.spacing['2xl'],
-    margin: THEME.spacing.lg,
+    margin: 14,
     alignItems: 'center',
     borderWidth: 1,
     borderColor: THEME.colors.border,
@@ -278,6 +278,8 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     marginBottom: THEME.spacing.md,
+    flexWrap: 'wrap',
+    gap: 8,
   },
   batchBadgeRow: {
     flexDirection: 'row',
@@ -316,17 +318,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: '#FFE4E6',
+    backgroundColor: '#ECFEFF',
     paddingHorizontal: 8,
     paddingVertical: 6,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#FECDD3',
+    borderColor: '#A5F3FC',
   },
   advanceDayBtnText: {
     fontSize: 11,
     fontWeight: '700',
-    color: '#881337',
+    color: '#0891B2',
   },
   sellerAssignBtn: {
     flexDirection: 'row',
@@ -345,11 +347,11 @@ const styles = StyleSheet.create({
     color: '#065F46',
   },
   originCard: {
-    backgroundColor: '#F8FAFC',
+    backgroundColor: '#F0FDFA',
     padding: 10,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: '#CCFBF1',
     marginBottom: THEME.spacing.md,
   },
   originHeader: {
