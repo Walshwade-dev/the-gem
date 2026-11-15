@@ -3225,3 +3225,64 @@ Implemented the zero-SMS-cost Master-issued 6-digit login code + worker passphra
 - [frontend/src/store/useAppStore.ts](file:///home/wadeace/Projects/onion%20sales/frontend/src/store/useAppStore.ts#L477-L495)
 - [frontend/src/components/SellerManagementModal.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/src/components/SellerManagementModal.tsx#L129-L232)
 - [frontend/src/components/LoginScreen.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/src/components/LoginScreen.tsx#L915-L1005)
+
+
+---
+
+## Report — Shared Batch Visibility, Master Post-14:00 & Assigned-Stock Sales, and Assignment Revoke
+
+### 1. Summary
+Updated batch stock tracking, Master sale permissions, and assignment revocation so that assigning stock to a worker keeps the batch visible on the Master with an "Assigned to" indicator, allows the Master to record sales at any time (including after 14:00 EAT or while stock is assigned, deducting from assigned stock and logging the sale as Master), and lets the Master revoke an assignment while viewing sold vs returned nets.
+
+### 2. Files Changed / Added
+- [server/src/services/stockLedger.ts](file:///home/wadeace/Projects/onion%20sales/server/src/services/stockLedger.ts#L27-L63): Added `getBatchTotalRemainingNominalGrams` and `getAssignmentInitialNominalGrams`.
+- [server/src/routes/sync.ts](file:///home/wadeace/Projects/onion%20sales/server/src/routes/sync.ts#L232-L270): Included `totalRemainingGrade1NominalGrams`, `totalRemainingGrade2NominalGrams` on synced batches and `initialGrade1NominalGrams`, `initialGrade2NominalGrams` on synced assignments.
+- [server/src/routes/sales.ts](file:///home/wadeace/Projects/onion%20sales/server/src/routes/sales.ts#L155-L240): Allowed `MERCHANT` (Master) to sell after the 14:00 EAT cutoff and deduct from active assignments when the unallocated pool is exhausted while recording `sellerType: 'MASTER'`.
+- [server/src/routes/assignments.ts](file:///home/wadeace/Projects/onion%20sales/server/src/routes/assignments.ts#L785-L917): Added `POST /assignments/:id/revoke` to return remaining unsold nets to the Master's pool, close the assignment, revoke seller sessions if no active assignments remain, and return sold vs returned counts.
+- [frontend/src/types/index.ts](file:///home/wadeace/Projects/onion%20sales/frontend/src/types/index.ts#L80-L85), [frontend/src/services/syncMapper.ts](file:///home/wadeace/Projects/onion%20sales/frontend/src/services/syncMapper.ts#L268-L322): Kept `remainingGrade1Nets` / `remainingGrade2Nets` as total physical batch stock, added `unassignedGrade1Nets` / `unassignedGrade2Nets`, and computed `grade1Sold` / `grade2Sold` from initial vs available assignment balances.
+- [frontend/src/store/useAppStore.ts](file:///home/wadeace/Projects/onion%20sales/frontend/src/store/useAppStore.ts#L952-L982): Added `revokeSellerAssignment`.
+- [frontend/src/components/BatchOverviewCard.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/src/components/BatchOverviewCard.tsx#L82-L140): Added an `Assigned to:` banner on the Master's batch card showing active workers and remaining nets.
+- [frontend/src/components/SellerManagementModal.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/src/components/SellerManagementModal.tsx#L370-L435): Used unassigned pool limits for new allocations and added a **Revoke** action showing sold vs returned nets.
+
+### 3. Verification
+- `npm --prefix "/home/wadeace/Projects/onion sales/server" run build` exited `0`.
+- `npx tsc --noEmit` in `frontend/` exited `0`.
+
+### 4. Open Issues / Risks
+- Needs git push to `origin/main` (for Render deploy) and APK rebuild/reinstall for the phone.
+
+### 5. Next Steps
+- Push to GitHub and rebuild/reinstall `app-release.apk` on the phone if requested.
+
+### 6. References
+- [server/src/routes/sales.ts](file:///home/wadeace/Projects/onion%20sales/server/src/routes/sales.ts#L155-L240)
+- [server/src/routes/assignments.ts](file:///home/wadeace/Projects/onion%20sales/server/src/routes/assignments.ts#L785-L917)
+- [frontend/src/components/BatchOverviewCard.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/src/components/BatchOverviewCard.tsx#L103-L140)
+- [frontend/src/components/SellerManagementModal.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/src/components/SellerManagementModal.tsx#L370-L435)
+
+
+---
+
+## Report — Live Batch Ledger Sync & Multi-Seller Continuity
+
+### 1. Summary
+Added automatic background, tab-switch, foreground, and pull-to-refresh server syncing so the Master's batch ledger, stock balance, sales stream, and daily closure update live as assigned workers record sales, and added a per-staff sales breakdown inside `MasterBatchLedgerReceipt.tsx` so Master + Seller 1 + Seller 2 sales combine continuously with zero gap.
+
+### 2. Files Changed / Added
+- [App.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/App.tsx#L126-L152): Added automatic `syncFromServer()` on tab change (`activeNavTab`), app foreground (`AppState`), 10-second polling interval, and pull-to-refresh (`RefreshControl`) on the main `ScrollView`.
+- [MasterBatchLedgerReceipt.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/src/components/ui/MasterBatchLedgerReceipt.tsx#L634-L659): Added `SALES BY STAFF (CONTINUOUS BATCH LEDGER)` breakdown under Section 3 (`SALES`) showing Master and each assigned worker's nets and revenue on the batch.
+- [DailyClosureReceipt.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/src/components/ui/DailyClosureReceipt.tsx#L84-L120): Scoped live `soldG1Live`, `soldG2Live`, `salesG1Live`, `salesG2Live`, `liveCashSales`, and `liveMpesaSales` to the active `currentBatch.id`.
+
+### 3. Verification
+- `npx tsc --noEmit` in `frontend/` exited `0`.
+
+### 4. Open Issues / Risks
+- Needs git push (`origin/main`) and APK rebuild/reinstall to deploy to Render and the phone.
+
+### 5. Next Steps
+- Push to GitHub and rebuild/reinstall `app-release.apk` on the phone if requested.
+
+### 6. References
+- [App.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/App.tsx#L126-L152)
+- [MasterBatchLedgerReceipt.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/src/components/ui/MasterBatchLedgerReceipt.tsx#L634-L659)
+- [DailyClosureReceipt.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/src/components/ui/DailyClosureReceipt.tsx#L84-L120)

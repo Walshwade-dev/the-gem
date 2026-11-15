@@ -80,6 +80,9 @@ export const BatchOverviewCard: React.FC<BatchOverviewCardProps> = ({
   const displayG2Total = isSeller ? g2Allocated : currentBatch.initialGrade2Nets;
 
   const displayTotalRemaining = displayG1Remaining + displayG2Remaining;
+  const batchAllocations = !isSeller
+    ? (allocations || []).filter((a) => a.batchId === currentBatch.id)
+    : [];
 
   const g1Percent = displayG1Total > 0 
     ? Math.round((displayG1Remaining / displayG1Total) * 100) 
@@ -102,6 +105,42 @@ export const BatchOverviewCard: React.FC<BatchOverviewCardProps> = ({
           </Text>
         </View>
       </View>
+
+      {!isSeller && batchAllocations.length > 0 && (
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 6,
+            backgroundColor: isDarkMode ? '#1B4F55' : '#ECFEFF',
+            borderColor: isDarkMode ? 'rgba(122, 181, 188, 0.45)' : '#A5F3FC',
+            borderWidth: 1,
+            borderRadius: 10,
+            paddingHorizontal: 10,
+            paddingVertical: 7,
+            marginBottom: 10,
+          }}
+        >
+          <Ionicons name="person-circle-outline" size={16} color={isDarkMode ? '#5EEAD4' : '#0891B2'} />
+          <Text
+            style={{
+              flex: 1,
+              fontSize: 11.5,
+              fontWeight: '700',
+              color: isDarkMode ? '#F0FDFA' : '#0E7490',
+            }}
+            numberOfLines={2}
+          >
+            Assigned to:{' '}
+            {batchAllocations
+              .map(
+                (a) =>
+                  `${a.sellerName} (${Math.max(0, a.grade1Allocated - a.grade1Sold)} G1, ${Math.max(0, a.grade2Allocated - a.grade2Sold)} G2 left)`
+              )
+              .join(' • ')}
+          </Text>
+        </View>
+      )}
 
       {/* 2. Current Stock Progress & Counts */}
       <View style={styles.stockSection}>

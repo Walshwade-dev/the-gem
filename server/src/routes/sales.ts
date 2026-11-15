@@ -155,7 +155,10 @@ export async function registerSalesRoutes(app: FastifyInstance, deps: AppRouteDe
           let isLateSale = false;
           let pendingReview = false;
           if (mkt?.closedAt && !mkt.lateSessionOpen) {
-            if (data.isOfflineSynced) {
+            if (auth.role === 'MERCHANT') {
+              // Master is allowed to sell even after the 14:00 EAT cutoff
+              isLateSale = true;
+            } else if (data.isOfflineSynced) {
               isLateSale = true;
               pendingReview = true;
             } else {
@@ -165,7 +168,7 @@ export async function registerSalesRoutes(app: FastifyInstance, deps: AppRouteDe
               });
             }
           } else if (mkt?.lateSessionOpen) {
-            if (mkt.lateEndsAt && mkt.lateEndsAt < new Date() && !data.isOfflineSynced) {
+            if (auth.role !== 'MERCHANT' && mkt.lateEndsAt && mkt.lateEndsAt < new Date() && !data.isOfflineSynced) {
               throw Object.assign(new Error('Late session has expired'), {
                 statusCode: 403,
                 code: 'LATE_SESSION_EXPIRED',
@@ -197,6 +200,8 @@ export async function registerSalesRoutes(app: FastifyInstance, deps: AppRouteDe
           }
 
           let availableGrams = 0;
+          const stockDeductions: Array<{ assignmentId: string | null; grams: number }> = [];
+
           if (data.assignmentId) {
             const assignRes = await tx.execute(
               sql`SELECT * FROM stock_assignments WHERE id = ${data.assignmentId} AND master_id = ${auth.masterId} FOR UPDATE`
@@ -220,8 +225,36 @@ export async function registerSalesRoutes(app: FastifyInstance, deps: AppRouteDe
               data.assignmentId,
               data.grade
             );
+            if (availableGrams >= data.quantityNominalGrams) {
+              stockDeductions.push({ assignmentId: data.assignmentId, grams: data.quantityNominalGrams });
+            }
           } else {
-            availableGrams = await getBatchPoolNominalGrams(tx, data.batchId, data.grade);
+            const poolGrams = await getBatchPoolNominalGrams(tx, data.batchId, data.grade);
+            availableGrams = poolGrams;
+
+            if (poolGrams >= data.quantityNominalGrams) {
+              stockDeductions.push({ assignmentId: null, grams: data.quantityNominalGrams });
+            } else if (auth.role === 'MERCHANT') {
+              // Master can sell from the batch even when stock is assigned to sellers;
+              // take any unallocated pool first, then deduct from active assignments to keep stock accurate.
+              if (poolGrams > 0) {
+                stockDeductions.push({ assignmentId: null, grams: poolGrams });
+              }
+              let remainingNeeded = data.quantityNominalGrams - Math.max(0, poolGrams);
+              const activeAssignRes = await tx.execute(
+                sql`SELECT id FROM stock_assignments WHERE batch_id = ${data.batchId} AND master_id = ${auth.masterId} AND status = 'ACTIVE' ORDER BY opened_at ASC FOR UPDATE`
+              );
+              for (const row of activeAssignRes.rows as Array<{ id: string }>) {
+                if (remainingNeeded <= 0) break;
+                const assignAvail = await getAssignmentAvailableNominalGrams(tx, row.id, data.grade);
+                availableGrams += Math.max(0, assignAvail);
+                if (assignAvail > 0) {
+                  const take = Math.min(assignAvail, remainingNeeded);
+                  stockDeductions.push({ assignmentId: row.id, grams: take });
+                  remainingNeeded -= take;
+                }
+              }
+            }
           }
 
           if (availableGrams < data.quantityNominalGrams) {
@@ -423,26 +456,14 @@ export async function registerSalesRoutes(app: FastifyInstance, deps: AppRouteDe
             })
             .returning();
 
-          if (saleStatus === 'CONFIRMED') {
+          for (const slice of stockDeductions) {
             await appendStockMovement(tx, {
               masterId: auth.masterId,
               batchId: data.batchId,
-              assignmentId: data.assignmentId ?? null,
+              assignmentId: slice.assignmentId,
               grade: data.grade,
-              movementType: 'SALE',
-              deltaNominalGrams: -data.quantityNominalGrams,
-              referenceId: sale.id,
-              actorType: auth.actorType,
-              actorId: auth.userId,
-            });
-          } else {
-            await appendStockMovement(tx, {
-              masterId: auth.masterId,
-              batchId: data.batchId,
-              assignmentId: data.assignmentId ?? null,
-              grade: data.grade,
-              movementType: 'RESERVE',
-              deltaNominalGrams: -data.quantityNominalGrams,
+              movementType: saleStatus === 'CONFIRMED' ? 'SALE' : 'RESERVE',
+              deltaNominalGrams: -slice.grams,
               referenceId: sale.id,
               actorType: auth.actorType,
               actorId: auth.userId,

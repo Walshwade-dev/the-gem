@@ -80,6 +80,8 @@ export interface TruckBatch {
   // Remaining Stock (Computed & Reconciled at COB)
   remainingGrade1Nets: number;
   remainingGrade2Nets: number;
+  unassignedGrade1Nets?: number;
+  unassignedGrade2Nets?: number;
 
   // Visual Produce Cataloging
   photoUrls: string[];         // Produce condition pictures (quality comparison & social marketing)

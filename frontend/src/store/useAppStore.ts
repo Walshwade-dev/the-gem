@@ -192,6 +192,14 @@ export interface AppState {
     expectedPriceG1: number;
     expectedPriceG2: number;
   }) => Promise<{ inviteCode?: string }>;
+  revokeSellerAssignment: (assignmentId: string) => Promise<{
+    success: boolean;
+    soldG1Nets?: number;
+    soldG2Nets?: number;
+    returnedG1Nets?: number;
+    returnedG2Nets?: number;
+    message?: string;
+  }>;
   updateSellerNationalId: (sellerId: string, nationalId: string) => Promise<void>;
 
   // Expenses & Deductions
@@ -947,6 +955,35 @@ export const useAppStore = create<AppState>()(
           body: { nationalId },
         });
         await get().syncFromServer();
+      },
+
+      revokeSellerAssignment: async (assignmentId) => {
+        try {
+          const pkgGrams = ((get().currentBatch?.packagingKg ?? 20) * 1000);
+          const res = await apiFetch<{
+            ok: boolean;
+            returnedG1NominalGrams: number;
+            returnedG2NominalGrams: number;
+            soldG1NominalGrams: number;
+            soldG2NominalGrams: number;
+          }>(`/assignments/${assignmentId}/revoke`, {
+            method: 'POST',
+            body: {},
+          });
+          await get().syncFromServer();
+          return {
+            success: true,
+            soldG1Nets: Math.round(res.soldG1NominalGrams / pkgGrams),
+            soldG2Nets: Math.round(res.soldG2NominalGrams / pkgGrams),
+            returnedG1Nets: Math.round(res.returnedG1NominalGrams / pkgGrams),
+            returnedG2Nets: Math.round(res.returnedG2NominalGrams / pkgGrams),
+          };
+        } catch (err) {
+          return {
+            success: false,
+            message: err instanceof Error ? err.message : 'Failed to revoke assignment',
+          };
+        }
       },
 
       toggleNccCessPayment: async () => {

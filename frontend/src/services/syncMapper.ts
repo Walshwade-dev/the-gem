@@ -50,6 +50,8 @@ export interface BackendSyncPayload {
     initialGrade2NominalGrams: number;
     poolGrade1NominalGrams: number;
     poolGrade2NominalGrams: number;
+    totalRemainingGrade1NominalGrams?: number;
+    totalRemainingGrade2NominalGrams?: number;
     nccCountedNets: number;
     nccComputedPayableCents: number;
     nccOfficialAmountCents?: number | null;
@@ -74,6 +76,8 @@ export interface BackendSyncPayload {
     status: 'ACTIVE' | 'CLOSED' | 'REVOKED';
     openedAt: string;
     closedAt?: string | null;
+    initialGrade1NominalGrams?: number;
+    initialGrade2NominalGrams?: number;
     availableGrade1NominalGrams: number;
     availableGrade2NominalGrams: number;
   }>;
@@ -263,8 +267,10 @@ export function mapSyncPayloadToStore(payload: BackendSyncPayload) {
       nccCessPaidAt: b.nccCessPaidAt ?? undefined,
       initialGrade1Nets: b.initialGrade1NominalGrams / pkgGrams,
       initialGrade2Nets: b.initialGrade2NominalGrams / pkgGrams,
-      remainingGrade1Nets: b.poolGrade1NominalGrams / pkgGrams,
-      remainingGrade2Nets: b.poolGrade2NominalGrams / pkgGrams,
+      remainingGrade1Nets: (b.totalRemainingGrade1NominalGrams ?? b.poolGrade1NominalGrams) / pkgGrams,
+      remainingGrade2Nets: (b.totalRemainingGrade2NominalGrams ?? b.poolGrade2NominalGrams) / pkgGrams,
+      unassignedGrade1Nets: b.poolGrade1NominalGrams / pkgGrams,
+      unassignedGrade2Nets: b.poolGrade2NominalGrams / pkgGrams,
       photoUrls: b.photoUrls ?? [],
       qualityNotes: b.qualityNotes ?? undefined,
       purchaseCosts: b.purchaseCosts ?? undefined,
@@ -294,6 +300,8 @@ export function mapSyncPayloadToStore(payload: BackendSyncPayload) {
     .map((a) => {
       const seller = sellerMap.get(a.salespersonId);
       const ack = ackMap.get(a.id);
+      const g1Init = (a.initialGrade1NominalGrams ?? a.availableGrade1NominalGrams) / pkgGrams;
+      const g2Init = (a.initialGrade2NominalGrams ?? a.availableGrade2NominalGrams) / pkgGrams;
       const g1Left = a.availableGrade1NominalGrams / pkgGrams;
       const g2Left = a.availableGrade2NominalGrams / pkgGrams;
       return {
@@ -304,10 +312,10 @@ export function mapSyncPayloadToStore(payload: BackendSyncPayload) {
         sellerPhone: seller?.phoneE164 ?? '',
         sellerNationalId: seller?.nationalId ?? undefined,
         date: a.openedAt.slice(0, 10),
-        grade1Allocated: g1Left,
-        grade2Allocated: g2Left,
-        grade1Sold: 0,
-        grade2Sold: 0,
+        grade1Allocated: g1Init,
+        grade2Allocated: g2Init,
+        grade1Sold: Math.max(0, g1Init - g1Left),
+        grade2Sold: Math.max(0, g2Init - g2Left),
         expectedPriceG1: Math.round(a.expectedPriceG1Cents / 100),
         expectedPriceG2: Math.round(a.expectedPriceG2Cents / 100),
         acknowledgmentStatus:

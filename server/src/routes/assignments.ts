@@ -15,7 +15,12 @@ import { getNairobiBusinessDate } from '../utils/time.js';
 import { writeAuditEvent } from '../services/audit.js';
 import { withIdempotency } from '../services/idempotency.js';
 import { createOrSubmitReconciliation } from '../services/reconciliation.js';
-import { appendStockMovement, getAssignmentAvailableNominalGrams, getBatchPoolNominalGrams } from '../services/stockLedger.js';
+import {
+  appendStockMovement,
+  getAssignmentAvailableNominalGrams,
+  getAssignmentSoldNominalGrams,
+  getBatchPoolNominalGrams,
+} from '../services/stockLedger.js';
 import { AppRouteDeps, sendValidationError } from './types.js';
 
 export async function registerAssignmentRoutes(app: FastifyInstance, deps: AppRouteDeps) {
@@ -780,6 +785,142 @@ export async function registerAssignmentRoutes(app: FastifyInstance, deps: AppRo
         .returning();
       if (!updated) return reply.code(404).send({ error: 'SALESPERSON_NOT_FOUND' });
       return reply.send({ seller: updated });
+    }
+  );
+
+  // POST /assignments/:id/revoke (Master only) - returns all remaining unsold stock to Master's pool and closes assignment
+  app.post(
+    '/assignments/:id/revoke',
+    { preHandler: [authenticate, requireMaster] },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const auth = request.auth!;
+
+      const result = await db.transaction(async (tx) => {
+        const [assignment] = await tx
+          .select()
+          .from(stockAssignments)
+          .where(and(eq(stockAssignments.id, id), eq(stockAssignments.masterId, auth.masterId)))
+          .limit(1);
+
+        if (!assignment || assignment.status !== 'ACTIVE') {
+          throw Object.assign(new Error('Active assignment not found'), {
+            statusCode: 404,
+            code: 'ASSIGNMENT_NOT_FOUND',
+          });
+        }
+
+        const [availG1, availG2, soldG1, soldG2] = await Promise.all([
+          getAssignmentAvailableNominalGrams(tx, assignment.id, 'GRADE_1'),
+          getAssignmentAvailableNominalGrams(tx, assignment.id, 'GRADE_2'),
+          getAssignmentSoldNominalGrams(tx, assignment.id, 'GRADE_1'),
+          getAssignmentSoldNominalGrams(tx, assignment.id, 'GRADE_2'),
+        ]);
+
+        if (availG1 > 0) {
+          await appendStockMovement(tx, {
+            masterId: auth.masterId,
+            batchId: assignment.batchId,
+            assignmentId: assignment.id,
+            grade: 'GRADE_1',
+            movementType: 'RETURN',
+            deltaNominalGrams: -availG1,
+            referenceId: assignment.id,
+            actorType: 'MASTER',
+            actorId: auth.userId,
+          });
+          await appendStockMovement(tx, {
+            masterId: auth.masterId,
+            batchId: assignment.batchId,
+            assignmentId: null,
+            grade: 'GRADE_1',
+            movementType: 'RETURN',
+            deltaNominalGrams: availG1,
+            referenceId: assignment.id,
+            actorType: 'MASTER',
+            actorId: auth.userId,
+          });
+        }
+
+        if (availG2 > 0) {
+          await appendStockMovement(tx, {
+            masterId: auth.masterId,
+            batchId: assignment.batchId,
+            assignmentId: assignment.id,
+            grade: 'GRADE_2',
+            movementType: 'RETURN',
+            deltaNominalGrams: -availG2,
+            referenceId: assignment.id,
+            actorType: 'MASTER',
+            actorId: auth.userId,
+          });
+          await appendStockMovement(tx, {
+            masterId: auth.masterId,
+            batchId: assignment.batchId,
+            assignmentId: null,
+            grade: 'GRADE_2',
+            movementType: 'RETURN',
+            deltaNominalGrams: availG2,
+            referenceId: assignment.id,
+            actorType: 'MASTER',
+            actorId: auth.userId,
+          });
+        }
+
+        const [updated] = await tx
+          .update(stockAssignments)
+          .set({ status: 'CLOSED', closedAt: new Date(), closedBy: auth.userId })
+          .where(eq(stockAssignments.id, assignment.id))
+          .returning();
+
+        const remaining = await tx
+          .select({ id: stockAssignments.id })
+          .from(stockAssignments)
+          .where(
+            and(
+              eq(stockAssignments.salespersonId, assignment.salespersonId),
+              eq(stockAssignments.status, 'ACTIVE')
+            )
+          )
+          .limit(1);
+        if (remaining.length === 0) {
+          await tx
+            .update(sessions)
+            .set({ revokedAt: new Date() })
+            .where(
+              and(
+                eq(sessions.salespersonId, assignment.salespersonId),
+                isNull(sessions.revokedAt)
+              )
+            );
+        }
+
+        await writeAuditEvent(tx, {
+          masterId: auth.masterId,
+          actorType: 'MASTER',
+          actorId: auth.userId,
+          action: 'ASSIGNMENT_REVOKED',
+          outcome: 'SUCCESS',
+          entityType: 'stock_assignment',
+          entityId: assignment.id,
+          afterState: {
+            returnedG1NominalGrams: availG1,
+            returnedG2NominalGrams: availG2,
+            soldG1NominalGrams: soldG1,
+            soldG2NominalGrams: soldG2,
+          },
+        });
+
+        return {
+          assignment: updated,
+          returnedG1NominalGrams: Math.max(0, availG1),
+          returnedG2NominalGrams: Math.max(0, availG2),
+          soldG1NominalGrams: soldG1,
+          soldG2NominalGrams: soldG2,
+        };
+      });
+
+      return reply.send({ ok: true, ...result });
     }
   );
 }

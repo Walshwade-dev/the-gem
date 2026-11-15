@@ -631,6 +631,32 @@ export const MasterBatchLedgerReceipt: React.FC<MasterBatchLedgerReceiptProps> =
                   </Text>
                 </View>
 
+                {batchSales.length > 0 && (
+                  <View style={{ marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: isDarkMode ? 'rgba(122, 181, 188, 0.25)' : '#E2E8F0' }}>
+                    <Text style={[styles.subItemNote, { fontWeight: '800', marginBottom: 4 }, isDarkMode && { color: '#5EEAD4' }]}>
+                      SALES BY STAFF (CONTINUOUS BATCH LEDGER)
+                    </Text>
+                    {Object.entries(
+                      batchSales.reduce<Record<string, { nets: number; amount: number }>>((acc, s) => {
+                        const key = s.sellerName || 'Staff';
+                        if (!acc[key]) acc[key] = { nets: 0, amount: 0 };
+                        acc[key].nets += s.quantityNets;
+                        acc[key].amount += s.totalAmount;
+                        return acc;
+                      }, {})
+                    ).map(([staff, info]) => (
+                      <View key={staff} style={[styles.lineItem, { paddingVertical: 3 }]}>
+                        <Text style={[styles.subItemNote, { fontWeight: '700' }, isDarkMode && { color: '#F0FDFA' }]}>
+                          • {staff} ({info.nets} nets)
+                        </Text>
+                        <Text style={[styles.subItemNote, { fontFamily: monospaceFont, fontWeight: '800' }, isDarkMode && { color: '#6EE7B7' }]}>
+                          +Ksh {info.amount.toLocaleString()}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+
                 {/* Collection Channels (Collapsible) */}
                 <View style={[styles.channelsBox, isDarkMode && styles.channelsBoxDark]}>
                   <TouchableOpacity

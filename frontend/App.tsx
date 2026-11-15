@@ -18,6 +18,8 @@ import {
   Alert,
   Image,
   Platform,
+  AppState,
+  RefreshControl,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -71,6 +73,7 @@ function MainScreen() {
     approveCreditSale,
     rejectCreditSale,
     resetToSampleData,
+    syncFromServer,
     isDarkMode,
   } = useAppStore(
     useShallow((s) => ({
@@ -88,6 +91,7 @@ function MainScreen() {
       approveCreditSale: s.approveCreditSale,
       rejectCreditSale: s.rejectCreditSale,
       resetToSampleData: s.resetToSampleData,
+      syncFromServer: s.syncFromServer,
       isDarkMode: s.isDarkMode,
     }))
   );
@@ -121,6 +125,7 @@ function MainScreen() {
   const [batchModalInitialMode, setBatchModalInitialMode] = useState<'view' | 'add' | 'prices'>('view');
   const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null);
   const [hasSelectedSalesBatch, setHasSelectedSalesBatch] = useState<boolean>(false);
+  const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
 
   const activeBatchesList = useMemo(() => {
     const productBatchIds = new Set(batchProducts.map((p) => p.batchId).filter(Boolean));
@@ -148,6 +153,28 @@ function MainScreen() {
 
   // Bottom Liquid Glass Navigation State & Filter Chips
   const [activeNavTab, setActiveNavTab] = useState<MainAppTab>('sales');
+
+  // Keep Master and Seller views synchronized with live server sales/stock/ledger changes
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    syncFromServer();
+  }, [isAuthenticated, activeNavTab, syncFromServer]);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const interval = setInterval(() => {
+      syncFromServer();
+    }, 10000);
+    const sub = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        syncFromServer();
+      }
+    });
+    return () => {
+      clearInterval(interval);
+      sub.remove();
+    };
+  }, [isAuthenticated, syncFromServer]);
   const [ledgerSubTab, setLedgerSubTab] = useState<'bookkeeping' | 'credit_records' | 'daily_closures'>('bookkeeping');
   const [selectedLedgerBatchId, setSelectedLedgerBatchId] = useState<string>('');
   const [showLedgerBatchFilter, setShowLedgerBatchFilter] = useState<boolean>(false);
@@ -327,6 +354,17 @@ function MainScreen() {
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefreshing}
+              onRefresh={async () => {
+                setIsRefreshing(true);
+                await syncFromServer();
+                setIsRefreshing(false);
+              }}
+              tintColor={isDarkMode ? '#5EEAD4' : '#0891B2'}
+            />
+          }
         >
           {/* TAB 1: LIVE SALES & OPERATIONS */}
           {activeNavTab === 'sales' && (

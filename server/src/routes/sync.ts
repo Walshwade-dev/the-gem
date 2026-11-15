@@ -25,7 +25,12 @@ import {
 } from '../db/schema.js';
 import { createAuthMiddleware } from '../auth/middleware.js';
 import { getNairobiBusinessDate } from '../utils/time.js';
-import { getAssignmentAvailableNominalGrams, getBatchPoolNominalGrams } from '../services/stockLedger.js';
+import {
+  getAssignmentAvailableNominalGrams,
+  getAssignmentInitialNominalGrams,
+  getBatchPoolNominalGrams,
+  getBatchTotalRemainingNominalGrams,
+} from '../services/stockLedger.js';
 import { AppRouteDeps } from './types.js';
 
 export async function registerSyncRoutes(app: FastifyInstance, deps: AppRouteDeps) {
@@ -232,25 +237,38 @@ export async function registerSyncRoutes(app: FastifyInstance, deps: AppRouteDep
     const [batches, assignments] = await Promise.all([
       Promise.all(
         batchesRaw.map(async (b) => {
-          const [poolG1, poolG2] = await Promise.all([
+          const [poolG1, poolG2, totalRemainingG1, totalRemainingG2] = await Promise.all([
             getBatchPoolNominalGrams(db, b.id, 'GRADE_1'),
             getBatchPoolNominalGrams(db, b.id, 'GRADE_2'),
+            getBatchTotalRemainingNominalGrams(db, b.id, 'GRADE_1'),
+            getBatchTotalRemainingNominalGrams(db, b.id, 'GRADE_2'),
           ]);
           return {
             ...(auth.role === 'MERCHANT' ? b : { ...b, purchaseCosts: null }),
             poolGrade1NominalGrams: poolG1,
             poolGrade2NominalGrams: poolG2,
+            totalRemainingGrade1NominalGrams: totalRemainingG1,
+            totalRemainingGrade2NominalGrams: totalRemainingG2,
           };
         })
       ),
       Promise.all(
         assignmentsRaw.map(async (a) => {
-          const [availableGrade1NominalGrams, availableGrade2NominalGrams] = await Promise.all([
+          const [
+            initialGrade1NominalGrams,
+            initialGrade2NominalGrams,
+            availableGrade1NominalGrams,
+            availableGrade2NominalGrams,
+          ] = await Promise.all([
+            getAssignmentInitialNominalGrams(db, a.id, 'GRADE_1'),
+            getAssignmentInitialNominalGrams(db, a.id, 'GRADE_2'),
             getAssignmentAvailableNominalGrams(db, a.id, 'GRADE_1'),
             getAssignmentAvailableNominalGrams(db, a.id, 'GRADE_2'),
           ]);
           return {
             ...a,
+            initialGrade1NominalGrams,
+            initialGrade2NominalGrams,
             availableGrade1NominalGrams,
             availableGrade2NominalGrams,
           };

@@ -29,7 +29,17 @@ export const SellerManagementModal: React.FC<SellerManagementModalProps> = ({
   onClose,
   onNavigateToProducts 
 }) => {
-  const { currentBatch, allocations, allocateStockToSeller, generateSellerInviteCode, isDarkMode } = useAppStore();
+  const {
+    currentBatch,
+    allocations,
+    allocateStockToSeller,
+    revokeSellerAssignment,
+    generateSellerInviteCode,
+    isDarkMode,
+  } = useAppStore();
+
+  const unassignedG1 = currentBatch?.unassignedGrade1Nets ?? currentBatch?.remainingGrade1Nets ?? 0;
+  const unassignedG2 = currentBatch?.unassignedGrade2Nets ?? currentBatch?.remainingGrade2Nets ?? 0;
 
   const [sellerName, setSellerName] = useState<string>('Juma (Sales Assistant)');
   const [sellerPhone, setSellerPhone] = useState<string>('0799887766');
@@ -46,8 +56,8 @@ export const SellerManagementModal: React.FC<SellerManagementModalProps> = ({
       if (currentBatch.pricePerBagGrade1) setG1TargetPrice(currentBatch.pricePerBagGrade1.toString());
       if (currentBatch.pricePerBagGrade2) setG2TargetPrice(currentBatch.pricePerBagGrade2.toString());
 
-      const maxG1 = currentBatch.remainingGrade1Nets || 0;
-      const maxG2 = currentBatch.remainingGrade2Nets || 0;
+      const maxG1 = unassignedG1;
+      const maxG2 = unassignedG2;
       setG1Allocated(maxG1 > 0 ? Math.min(40, maxG1).toString() : '0');
       setG2Allocated(maxG2 > 0 ? Math.min(20, maxG2).toString() : '0');
     }
@@ -55,8 +65,8 @@ export const SellerManagementModal: React.FC<SellerManagementModalProps> = ({
 
   // When master tries to assign stock but no stock has been added yet:
   const hasAvailableStock = currentBatch && (
-    (currentBatch.remainingGrade1Nets || 0) > 0 || 
-    (currentBatch.remainingGrade2Nets || 0) > 0
+    unassignedG1 > 0 ||
+    unassignedG2 > 0
   );
 
   if (!visible) return null;
@@ -141,10 +151,10 @@ export const SellerManagementModal: React.FC<SellerManagementModalProps> = ({
 
   const handleAllocate = async () => {
     if (isSubmitting) return;
-    if (!currentBatch || (!currentBatch.remainingGrade1Nets && !currentBatch.remainingGrade2Nets)) {
+    if (!currentBatch || (unassignedG1 <= 0 && unassignedG2 <= 0)) {
       Alert.alert(
-        '⚠️ No Stock Added',
-        'Please add stock in the Products catalog first before assigning stock to sales staff.'
+        '⚠️ No Unassigned Stock',
+        'All remaining stock in this batch is already assigned or sold. Revoke an assignment first to reassign.'
       );
       return;
     }
@@ -174,18 +184,18 @@ export const SellerManagementModal: React.FC<SellerManagementModalProps> = ({
       return;
     }
 
-    if (g1 > (currentBatch.remainingGrade1Nets || 0)) {
+    if (g1 > unassignedG1) {
       Alert.alert(
         'Quota Exceeds Remaining Stock',
-        `Cannot allocate ${g1} Grade 1 nets. Only ${currentBatch.remainingGrade1Nets || 0} nets currently remain in warehouse stock.`
+        `Cannot allocate ${g1} Grade 1 nets. Only ${unassignedG1} unassigned nets remain in warehouse stock.`
       );
       return;
     }
 
-    if (g2 > (currentBatch.remainingGrade2Nets || 0)) {
+    if (g2 > unassignedG2) {
       Alert.alert(
         'Quota Exceeds Remaining Stock',
-        `Cannot allocate ${g2} Grade 2 nets. Only ${currentBatch.remainingGrade2Nets || 0} nets currently remain in warehouse stock.`
+        `Cannot allocate ${g2} Grade 2 nets. Only ${unassignedG2} unassigned nets remain in warehouse stock.`
       );
       return;
     }
@@ -285,7 +295,7 @@ export const SellerManagementModal: React.FC<SellerManagementModalProps> = ({
               <View style={styles.row}>
                 <View style={[styles.col, { flex: 1 }]}>
                   <Text style={[styles.label, isDarkMode && styles.labelDark]}>
-                    GRADE 1 NETS (INTEGER, Max: {currentBatch?.remainingGrade1Nets || 0})
+                    GRADE 1 NETS (INTEGER, Max: {unassignedG1})
                   </Text>
                   <TextInput
                     style={[styles.textInput, isDarkMode && styles.textInputDark]}
@@ -312,7 +322,7 @@ export const SellerManagementModal: React.FC<SellerManagementModalProps> = ({
               <View style={styles.row}>
                 <View style={[styles.col, { flex: 1 }]}>
                   <Text style={[styles.label, isDarkMode && styles.labelDark]}>
-                    GRADE 2 NETS (INTEGER, Max: {currentBatch?.remainingGrade2Nets || 0})
+                    GRADE 2 NETS (INTEGER, Max: {unassignedG2})
                   </Text>
                   <TextInput
                     style={[styles.textInput, isDarkMode && styles.textInputDark]}
@@ -357,25 +367,69 @@ export const SellerManagementModal: React.FC<SellerManagementModalProps> = ({
                       </Text>
                     ) : null}
                   </View>
-                  <TouchableOpacity
-                    onPress={() => handleIssueLoginCode(alloc.sellerPhone, alloc.sellerName)}
-                    style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      gap: 4,
-                      backgroundColor: isDarkMode ? '#143D42' : '#E0F2FE',
-                      borderWidth: 1,
-                      borderColor: isDarkMode ? 'rgba(122, 181, 188, 0.45)' : '#BAE6FD',
-                      paddingHorizontal: 10,
-                      paddingVertical: 6,
-                      borderRadius: 8,
-                    }}
-                  >
-                    <Ionicons name="key-outline" size={13} color={isDarkMode ? '#5EEAD4' : '#0891B2'} />
-                    <Text style={{ fontSize: 11, fontWeight: '800', color: isDarkMode ? '#5EEAD4' : '#0891B2' }}>
-                      {codeForSeller ? 'New Code' : 'Get Code'}
-                    </Text>
-                  </TouchableOpacity>
+                  <View style={{ flexDirection: 'row', gap: 6 }}>
+                    <TouchableOpacity
+                      onPress={() => handleIssueLoginCode(alloc.sellerPhone, alloc.sellerName)}
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 4,
+                        backgroundColor: isDarkMode ? '#143D42' : '#E0F2FE',
+                        borderWidth: 1,
+                        borderColor: isDarkMode ? 'rgba(122, 181, 188, 0.45)' : '#BAE6FD',
+                        paddingHorizontal: 10,
+                        paddingVertical: 6,
+                        borderRadius: 8,
+                      }}
+                    >
+                      <Ionicons name="key-outline" size={13} color={isDarkMode ? '#5EEAD4' : '#0891B2'} />
+                      <Text style={{ fontSize: 11, fontWeight: '800', color: isDarkMode ? '#5EEAD4' : '#0891B2' }}>
+                        {codeForSeller ? 'New Code' : 'Get Code'}
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => {
+                        const g1Left = Math.max(0, alloc.grade1Allocated - alloc.grade1Sold);
+                        const g2Left = Math.max(0, alloc.grade2Allocated - alloc.grade2Sold);
+                        Alert.alert(
+                          'Revoke Stock Assignment?',
+                          `${alloc.sellerName} has sold ${alloc.grade1Sold} G1 & ${alloc.grade2Sold} G2 nets.\n\nRevoking will return the remaining ${g1Left} G1 & ${g2Left} G2 nets to you so you can carry on selling.`,
+                          [
+                            { text: 'Cancel', style: 'cancel' },
+                            {
+                              text: 'Revoke & Reclaim',
+                              style: 'destructive',
+                              onPress: async () => {
+                                const res = await revokeSellerAssignment(alloc.id);
+                                if (res.success) {
+                                  Alert.alert(
+                                    'Assignment Revoked',
+                                    `Sold: ${res.soldG1Nets ?? 0} G1 & ${res.soldG2Nets ?? 0} G2 nets.\nReturned to your stock: ${res.returnedG1Nets ?? 0} G1 & ${res.returnedG2Nets ?? 0} G2 nets.`
+                                  );
+                                } else {
+                                  Alert.alert('Revoke Failed', res.message || 'Please try again.');
+                                }
+                              },
+                            },
+                          ]
+                        );
+                      }}
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 4,
+                        backgroundColor: isDarkMode ? '#3B181C' : '#FEF2F2',
+                        borderWidth: 1,
+                        borderColor: isDarkMode ? '#EF4444' : '#FECACA',
+                        paddingHorizontal: 10,
+                        paddingVertical: 6,
+                        borderRadius: 8,
+                      }}
+                    >
+                      <Ionicons name="return-down-back" size={13} color="#EF4444" />
+                      <Text style={{ fontSize: 11, fontWeight: '800', color: '#EF4444' }}>Revoke</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
 
                 <View style={styles.allocGrid}>

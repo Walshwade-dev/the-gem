@@ -25,6 +25,44 @@ export async function getBatchPoolNominalGrams(
 }
 
 /**
+ * Computes total remaining physical nominal grams across the entire batch
+ * (unallocated pool + all active assignments).
+ */
+export async function getBatchTotalRemainingNominalGrams(
+  tx: AppDb | Tx,
+  batchId: string,
+  grade: 'GRADE_1' | 'GRADE_2'
+): Promise<number> {
+  const res = await tx.execute(sql`
+    SELECT COALESCE(SUM(delta_nominal_grams), 0)::int AS balance
+    FROM stock_movements
+    WHERE batch_id = ${batchId}
+      AND grade = ${grade}
+  `);
+  const row = res.rows[0] as { balance: number } | undefined;
+  return Math.max(0, Number(row?.balance ?? 0));
+}
+
+/**
+ * Computes total initial + topped-up nominal grams allocated to an assignment.
+ */
+export async function getAssignmentInitialNominalGrams(
+  tx: AppDb | Tx,
+  assignmentId: string,
+  grade: 'GRADE_1' | 'GRADE_2'
+): Promise<number> {
+  const res = await tx.execute(sql`
+    SELECT COALESCE(SUM(delta_nominal_grams), 0)::int AS initial
+    FROM stock_movements
+    WHERE assignment_id = ${assignmentId}
+      AND grade = ${grade}
+      AND movement_type IN ('ALLOCATE', 'TOPUP')
+  `);
+  const row = res.rows[0] as { initial: number } | undefined;
+  return Math.max(0, Number(row?.initial ?? 0));
+}
+
+/**
  * Computes available nominal grams on a specific assignment (allocated + topup - sold - reserved).
  * Must be called inside a transaction after locking the assignment row.
  */

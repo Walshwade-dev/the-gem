@@ -81,17 +81,21 @@ export const DailyClosureReceipt: React.FC<DailyClosureReceiptProps> = ({
     ? (currentBatch?.remainingGrade2Nets ?? 0)
     : (activeRec?.physicalCountGrade2 ?? 0);
 
+  const liveBatchSales = useMemo(() => {
+    return currentBatch ? sales.filter((s) => s.batchId === currentBatch.id) : sales;
+  }, [sales, currentBatch]);
+
   const soldG1Live = useMemo(() => {
-    return sales
+    return liveBatchSales
       .filter((s) => s.grade === 'GRADE_1')
       .reduce((sum, s) => sum + s.quantityNets, 0);
-  }, [sales]);
+  }, [liveBatchSales]);
 
   const soldG2Live = useMemo(() => {
-    return sales
+    return liveBatchSales
       .filter((s) => s.grade === 'GRADE_2')
       .reduce((sum, s) => sum + s.quantityNets, 0);
-  }, [sales]);
+  }, [liveBatchSales]);
 
   const soldG1 = isViewingLive
     ? (soldG1Live > 0 ? soldG1Live : Math.max(0, openingG1 - closingG1))
@@ -106,14 +110,14 @@ export const DailyClosureReceipt: React.FC<DailyClosureReceiptProps> = ({
   const setPriceG2 = currentBatch?.pricePerBagGrade2 ?? activeRec?.expectedPriceGrade2 ?? 0;
 
   const salesG1Live = useMemo(() => {
-    const list = sales.filter((s) => s.grade === 'GRADE_1');
+    const list = liveBatchSales.filter((s) => s.grade === 'GRADE_1');
     return list.length > 0 ? list.reduce((sum, s) => sum + s.totalAmount, 0) : soldG1 * setPriceG1;
-  }, [sales, soldG1, setPriceG1]);
+  }, [liveBatchSales, soldG1, setPriceG1]);
 
   const salesG2Live = useMemo(() => {
-    const list = sales.filter((s) => s.grade === 'GRADE_2');
+    const list = liveBatchSales.filter((s) => s.grade === 'GRADE_2');
     return list.length > 0 ? list.reduce((sum, s) => sum + s.totalAmount, 0) : soldG2 * setPriceG2;
-  }, [sales, soldG2, setPriceG2]);
+  }, [liveBatchSales, soldG2, setPriceG2]);
 
   const salesG1 = isViewingLive ? salesG1Live : (activeRec?.expectedGrossRevenueGrade1 ?? soldG1 * setPriceG1);
   const salesG2 = isViewingLive ? salesG2Live : (activeRec?.expectedGrossRevenueGrade2 ?? soldG2 * setPriceG2);
@@ -212,16 +216,16 @@ export const DailyClosureReceipt: React.FC<DailyClosureReceiptProps> = ({
 
   // Remittance Breakdown (Cash drawer + M-Pesa till)
   const liveCashSales = useMemo(() => {
-    return sales
+    return liveBatchSales
       .filter((s) => s.paymentMethod === 'CASH')
       .reduce((sum, s) => sum + s.totalAmount, 0);
-  }, [sales]);
+  }, [liveBatchSales]);
 
   const liveMpesaSales = useMemo(() => {
-    return sales
+    return liveBatchSales
       .filter((s) => s.paymentMethod === 'MPESA')
       .reduce((sum, s) => sum + s.totalAmount, 0);
-  }, [sales]);
+  }, [liveBatchSales]);
 
   const cashDeposited = isViewingLive
     ? Math.max(0, liveCashSales - totalExpensesSum)
