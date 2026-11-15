@@ -9,6 +9,7 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { THEME } from '../constants/theme';
 import { useShallow } from 'zustand/react/shallow';
 import { useAppStore } from '../store/useAppStore';
+import { confirmAndRevokeAssignment } from '../utils/revokeAssignmentPrompt';
 
 interface BatchOverviewCardProps {
   onOpenNewBatchModal?: () => void;
@@ -17,7 +18,7 @@ interface BatchOverviewCardProps {
 export const BatchOverviewCard: React.FC<BatchOverviewCardProps> = ({ 
   onOpenNewBatchModal 
 }) => {
-  const { currentBatch, role, allocations, currentUserId, currentUserName, isDarkMode, batchProducts } = useAppStore(
+  const { currentBatch, role, allocations, currentUserId, currentUserName, isDarkMode, batchProducts, revokeSellerAssignment } = useAppStore(
     useShallow((s) => ({
       currentBatch: s.currentBatch,
       role: s.role,
@@ -26,6 +27,7 @@ export const BatchOverviewCard: React.FC<BatchOverviewCardProps> = ({
       currentUserName: s.currentUserName,
       isDarkMode: s.isDarkMode,
       batchProducts: s.batchProducts,
+      revokeSellerAssignment: s.revokeSellerAssignment,
     }))
   );
 
@@ -107,38 +109,58 @@ export const BatchOverviewCard: React.FC<BatchOverviewCardProps> = ({
       </View>
 
       {!isSeller && batchAllocations.length > 0 && (
-        <View
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 6,
-            backgroundColor: isDarkMode ? '#1B4F55' : '#ECFEFF',
-            borderColor: isDarkMode ? 'rgba(122, 181, 188, 0.45)' : '#A5F3FC',
-            borderWidth: 1,
-            borderRadius: 10,
-            paddingHorizontal: 10,
-            paddingVertical: 7,
-            marginBottom: 10,
-          }}
-        >
-          <Ionicons name="person-circle-outline" size={16} color={isDarkMode ? '#5EEAD4' : '#0891B2'} />
-          <Text
-            style={{
-              flex: 1,
-              fontSize: 11.5,
-              fontWeight: '700',
-              color: isDarkMode ? '#F0FDFA' : '#0E7490',
-            }}
-            numberOfLines={2}
-          >
-            Assigned to:{' '}
-            {batchAllocations
-              .map(
-                (a) =>
-                  `${a.sellerName} (${Math.max(0, a.grade1Allocated - a.grade1Sold)} G1, ${Math.max(0, a.grade2Allocated - a.grade2Sold)} G2 left)`
-              )
-              .join(' • ')}
-          </Text>
+        <View style={{ gap: 6, marginBottom: 10 }}>
+          {batchAllocations.map((a) => {
+            const g1Left = Math.max(0, a.grade1Allocated - a.grade1Sold);
+            const g2Left = Math.max(0, a.grade2Allocated - a.grade2Sold);
+            return (
+              <View
+                key={a.id}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 6,
+                  backgroundColor: isDarkMode ? '#1B4F55' : '#ECFEFF',
+                  borderColor: isDarkMode ? 'rgba(122, 181, 188, 0.45)' : '#A5F3FC',
+                  borderWidth: 1,
+                  borderRadius: 10,
+                  paddingHorizontal: 10,
+                  paddingVertical: 7,
+                }}
+              >
+                <Ionicons name="person-circle-outline" size={16} color={isDarkMode ? '#5EEAD4' : '#0891B2'} />
+                <Text
+                  style={{
+                    flex: 1,
+                    fontSize: 11.5,
+                    fontWeight: '700',
+                    color: isDarkMode ? '#F0FDFA' : '#0E7490',
+                  }}
+                  numberOfLines={2}
+                >
+                  Assigned to: {a.sellerName} ({g1Left} G1, {g2Left} G2 left)
+                </Text>
+                <TouchableOpacity
+                  onPress={() => confirmAndRevokeAssignment(a, revokeSellerAssignment)}
+                  activeOpacity={0.8}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 4,
+                    backgroundColor: isDarkMode ? '#3B181C' : '#FEF2F2',
+                    borderWidth: 1,
+                    borderColor: isDarkMode ? '#EF4444' : '#FECACA',
+                    paddingHorizontal: 8,
+                    paddingVertical: 4,
+                    borderRadius: 8,
+                  }}
+                >
+                  <Ionicons name="return-down-back" size={12} color="#EF4444" />
+                  <Text style={{ fontSize: 11, fontWeight: '800', color: '#EF4444' }}>Revoke</Text>
+                </TouchableOpacity>
+              </View>
+            );
+          })}
         </View>
       )}
 

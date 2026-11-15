@@ -18,6 +18,7 @@ import {
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { THEME } from '../../constants/theme';
+import { confirmAndRevokeAssignment } from '../../utils/revokeAssignmentPrompt';
 import { useAppStore } from '../../store/useAppStore';
 import { CustomerCredit, CreditEntry } from '../../types';
 
@@ -56,6 +57,7 @@ export const UserProfileSection: React.FC<UserProfileSectionProps> = ({
     masterName,
     acceptedPaymentModes,
     togglePaymentMode,
+    revokeSellerAssignment,
   } = useAppStore();
 
   const paymentModes = acceptedPaymentModes || { CASH: true, MPESA: true, CREDIT: true };
@@ -951,10 +953,28 @@ export const UserProfileSection: React.FC<UserProfileSectionProps> = ({
                       </Text>
                     </View>
                   </View>
-                  <View style={styles.sellerItemRight}>
+                  <View style={[styles.sellerItemRight, { flexDirection: 'row', alignItems: 'center', gap: 8 }]}>
                     <Text style={[styles.sellerQuotaText, isDarkMode && styles.textMutedDark]}>
-                      G1: {alloc.grade1Allocated} nets • G2: {alloc.grade2Allocated} nets
+                      G1: {alloc.grade1Allocated} • G2: {alloc.grade2Allocated}
                     </Text>
+                    <TouchableOpacity
+                      onPress={() => confirmAndRevokeAssignment(alloc, revokeSellerAssignment)}
+                      activeOpacity={0.8}
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 3,
+                        backgroundColor: isDarkMode ? '#3B181C' : '#FEF2F2',
+                        borderWidth: 1,
+                        borderColor: isDarkMode ? '#EF4444' : '#FECACA',
+                        paddingHorizontal: 8,
+                        paddingVertical: 5,
+                        borderRadius: 8,
+                      }}
+                    >
+                      <Ionicons name="return-down-back" size={12} color="#EF4444" />
+                      <Text style={{ fontSize: 11, fontWeight: '800', color: '#EF4444' }}>Revoke</Text>
+                    </TouchableOpacity>
                   </View>
                 </View>
               ))}
@@ -1270,22 +1290,22 @@ const styles = StyleSheet.create({
   },
   profileCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: THEME.borderRadius.lg,
-    padding: 16,
-    borderWidth: 1.5,
-    borderColor: '#CCFBF1',
+    borderRadius: 12,
+    padding: 14,
     marginBottom: 12,
-    shadowColor: '#0891B2',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
     elevation: 3,
   },
   profileCardDark: {
     backgroundColor: '#256A71',
-    borderColor: '#7AB5BC',
-    borderWidth: 0.75,
     shadowColor: '#0D2C30',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    elevation: 5,
   },
   profileHeaderRow: {
     flexDirection: 'row',
@@ -1529,16 +1549,22 @@ const styles = StyleSheet.create({
   // Policy Section Styles
   policyCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: THEME.borderRadius.lg,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    padding: 14,
     marginBottom: 12,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    elevation: 3,
   },
   policyCardDark: {
     backgroundColor: '#256A71',
-    borderColor: '#7AB5BC',
-    borderWidth: 0.75,
+    shadowColor: '#0D2C30',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    elevation: 5,
   },
   policyCardPending: {
     borderColor: '#FDE68A',
@@ -1813,11 +1839,14 @@ const styles = StyleSheet.create({
   // Metric Card & Common Card Styles
   metricCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: THEME.borderRadius.lg,
+    borderRadius: 12,
     padding: 14,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
     marginBottom: 12,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    elevation: 3,
   },
   cardHeaderRow: {
     flexDirection: 'row',
@@ -2384,8 +2413,11 @@ const styles = StyleSheet.create({
   },
   discrepancyModalCardDark: {
     backgroundColor: '#256A71',
-    borderColor: '#7AB5BC',
-    borderWidth: 0.75,
+    shadowColor: '#0D2C30',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35,
+    shadowRadius: 16,
+    elevation: 8,
   },
   discrepancyModalHeader: {
     flexDirection: 'row',

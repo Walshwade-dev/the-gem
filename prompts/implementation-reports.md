@@ -3376,3 +3376,36 @@ Connected the Staff Audit Log tab in `NotificationsModal` (`activityLogs`) to li
 
 7. **Next / Open Items**
    - None.
+
+---
+
+## Report 2026-11-15 — Expose Master Stock Revoke Actions on Home & Profile
+
+1. **User Request Summary**
+   - Master had no direct way to revoke assigned stock from the Home batch card or Profile screen.
+
+2. **Root Cause / Analysis**
+   - `revokeSellerAssignment` was only wired inside `SellerManagementModal.tsx` (opened via Profile -> `Assign Seller`), while `BatchOverviewCard.tsx` (`Assigned to: ...`) and `UserProfileSection.tsx` (`SELLER ASSIGNMENT & QUOTAS`) displayed active assignments without a Revoke button.
+
+3. **Changes Made**
+   - Created `frontend/src/utils/revokeAssignmentPrompt.ts` (`confirmAndRevokeAssignment`) to share the confirmation `Alert.alert` and `revokeSellerAssignment` feedback across components.
+   - Updated `frontend/src/components/BatchOverviewCard.tsx` to render each active batch allocation with an inline **Revoke** button for `MERCHANT`.
+   - Updated `frontend/src/components/ui/UserProfileSection.tsx` to include a **Revoke** button beside each assigned seller in `SELLER ASSIGNMENT & QUOTAS`.
+   - Refactored `frontend/src/components/SellerManagementModal.tsx` to reuse `confirmAndRevokeAssignment`.
+
+4. **Files Modified**
+   - `frontend/src/utils/revokeAssignmentPrompt.ts` (new)
+   - `frontend/src/components/BatchOverviewCard.tsx`
+   - `frontend/src/components/ui/UserProfileSection.tsx`
+   - `frontend/src/components/SellerManagementModal.tsx`
+   - `prompts/implementation-reports.md`
+
+5. **Verification**
+   - Ran `npx tsc --noEmit` in `frontend/` (`exit code 0`).
+
+6. **Deployment / Build**
+   - Committed and pushed to `origin/main`.
+   - Rebuilt `app-release.apk` via `./gradlew assembleRelease` and installed on `CI32ETYQ240929071929` via `adb install -r`.
+
+7. **Next / Open Items**
+   - None.
