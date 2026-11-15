@@ -35,6 +35,7 @@ export const NewBatchModal: React.FC<NewBatchModalProps> = ({ visible, onClose }
   const [nccCess, setNccCess] = useState<string>('16800'); // 240 * 70 Ksh
   const [initialG1, setInitialG1] = useState<string>('170');
   const [initialG2, setInitialG2] = useState<string>('70');
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
   const selectedRegion = PRESET_ORIGIN_REGIONS.find(r => r.regionId === selectedRegionId) || PRESET_ORIGIN_REGIONS[0];
 
@@ -52,7 +53,8 @@ export const NewBatchModal: React.FC<NewBatchModalProps> = ({ visible, onClose }
     setNccCess((num * 70).toString()); // County cess rate ~70 Ksh / bag
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
+    if (isSubmitting) return;
     if (!truckPlate.trim()) {
       Alert.alert('Missing Field', 'Please enter truck registration number.');
       return;
@@ -67,30 +69,40 @@ export const NewBatchModal: React.FC<NewBatchModalProps> = ({ visible, onClose }
       return;
     }
 
-    createBatch({
-      truckPlate: truckPlate.trim(),
-      origin: {
-        regionId: selectedRegion.regionId,
-        regionName: selectedRegion.regionName,
-        specificLocation: specificLocation.trim(),
-        farmerSupplierNotes: qualityNotes.trim() || undefined
-      },
-      nccDeclaredNets: ncc,
-      nccCessPaid: cess,
-      initialGrade1Nets: g1,
-      initialGrade2Nets: g2,
-      photoUrls: [
-        'https://images.unsplash.com/photo-1618512496248-a07fe83aa8cb?w=800&auto=format&fit=crop&q=80',
-        'https://images.unsplash.com/photo-1580201092675-a0a6a6cafbb1?w=800&auto=format&fit=crop&q=80'
-      ],
-      qualityNotes: qualityNotes.trim()
-    });
+    setIsSubmitting(true);
+    try {
+      await createBatch({
+        truckPlate: truckPlate.trim(),
+        origin: {
+          regionId: selectedRegion.regionId,
+          regionName: selectedRegion.regionName,
+          specificLocation: specificLocation.trim(),
+          farmerSupplierNotes: qualityNotes.trim() || undefined
+        },
+        nccDeclaredNets: ncc,
+        nccCessPaid: cess,
+        initialGrade1Nets: g1,
+        initialGrade2Nets: g2,
+        photoUrls: [
+          'https://images.unsplash.com/photo-1618512496248-a07fe83aa8cb?w=800&auto=format&fit=crop&q=80',
+          'https://images.unsplash.com/photo-1580201092675-a0a6a6cafbb1?w=800&auto=format&fit=crop&q=80'
+        ],
+        qualityNotes: qualityNotes.trim()
+      });
 
-    Alert.alert(
-      '✅ Truck Registered',
-      `Truck ${truckPlate} registered at Wakulima Market.\nOpening Stock: ${g1 + g2} nets (${g1} G1, ${g2} G2).\nFixed daily fees (Security Watchman Ksh 100 + Sweeping & Sanitation Ksh 100) automatically initialised.`
-    );
-    onClose();
+      Alert.alert(
+        '✅ Truck Registered',
+        `Truck ${truckPlate} registered and persisted at Wakulima Market.\nOpening Stock: ${g1 + g2} nets (${g1} G1, ${g2} G2).\nFixed daily fees (Security Watchman Ksh 100 + Sweeping & Sanitation Ksh 100) automatically initialised.`
+      );
+      onClose();
+    } catch (err) {
+      Alert.alert(
+        'Save Failed',
+        err instanceof Error ? err.message : 'Could not persist truck batch to server. Please try again.'
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (

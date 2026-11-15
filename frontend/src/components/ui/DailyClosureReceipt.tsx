@@ -18,7 +18,6 @@ import {
   ScrollView,
   Alert,
   Platform,
-  Share,
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { THEME } from '../../constants/theme';
@@ -45,6 +44,7 @@ export const DailyClosureReceipt: React.FC<DailyClosureReceiptProps> = ({
     expenses,
     casualLaborers,
     customerCredits,
+    performCobReconciliation,
     approveDailyReconciliation,
     toggleNccCessPayment,
     toggleExpensePaid,
@@ -54,9 +54,13 @@ export const DailyClosureReceipt: React.FC<DailyClosureReceiptProps> = ({
   const monospaceFont = Platform.OS === 'ios' ? 'Courier' : 'monospace';
 
   // Toggle between Live Streaming Today's Receipt and Past Sealed Reconciliations
-  const [selectedView, setSelectedView] = useState<'LIVE' | string>('LIVE');
+  const [selectedView, setSelectedView] = useState<'LIVE' | string>(
+    reconciliation ? reconciliation.id : 'LIVE'
+  );
+  const [isSealing, setIsSealing] = useState(false);
+  const [locallySealed, setLocallySealed] = useState(false);
 
-  const isViewingLive = selectedView === 'LIVE' || !reconciliation;
+  const isViewingLive = selectedView === 'LIVE';
   const activeRec: DailyReconciliation | undefined =
     !isViewingLive
       ? reconciliations.find((r) => r.id === selectedView) || reconciliation
@@ -235,7 +239,9 @@ export const DailyClosureReceipt: React.FC<DailyClosureReceiptProps> = ({
 
   const totalRemitted = cashDeposited + mpesaDirect;
   const isBalanced = isViewingLive ? true : totalRemitted === balanceAfterExpenses;
-  const isApproved = isViewingLive ? isNccPaid && isWatchmanPaid && isSweepersPaid : activeRec?.masterApprovalStatus === 'APPROVED';
+  const isApproved = Boolean(
+    (!isViewingLive && activeRec?.masterApprovalStatus === 'APPROVED') || locallySealed
+  );
 
   const todayDisplayDate = new Date().toLocaleDateString('en-GB', {
     day: '2-digit',
@@ -247,96 +253,71 @@ export const DailyClosureReceipt: React.FC<DailyClosureReceiptProps> = ({
     ? todayDisplayDate
     : (activeRec?.date || todayDisplayDate);
 
-  // Plain-text representation for SMS / WhatsApp export
-  const rawReceiptText = `Date: ${currentDateText}
-
-Stock: Opening - Grade 1 : ${openingG1} nets
-		 - Grade 2 : ${openingG2} nets
-Stock: Closing - Grade 1: ${closingG1} nets
-		  - Grade 2: ${closingG2} nets
-
-Difference: Grade 1 : (${openingG1} nets - ${closingG1} nets) 
-			= ${soldG1} nets
-	    : Grade 2: (${openingG2} nets - ${closingG2} nets)
-			= ${soldG2} nets
-
-Sales: Grade 1 : ${soldG1} nets * ${setPriceG1} = ${salesG1.toLocaleString()}
-	Grade 2 : ${soldG2} nets * ${setPriceG2} = ${salesG2.toLocaleString()}
-
-Credit: ${creditEntries.length > 0 ? creditEntries.map((c, i) => `${i === 0 ? '' : '		    '}${c.grade === 'Grade 1' ? 'Grade 1: ' : ''}${c.buyerName} ${c.nets} nets * ${c.unitPrice} = ${c.amount.toLocaleString()}`).join('\n') : 'None (0 nets on credit)'}
-
-Total sales after credit: (${salesG1.toLocaleString()} + ${salesG2.toLocaleString()}) - (${creditEntries.map(c => c.amount.toLocaleString()).join(' + ') || '0'})
-				= ${salesAfterCredit.toLocaleString()}
-Expenses
-	NCC : ${nccNets} nets = ${nccCess.toLocaleString()} (${isNccPaid ? 'PAID' : 'PENDING'})
-	Watchman: ${watchmanFee.toLocaleString()} (${isWatchmanPaid ? 'COLLECTED' : 'PENDING'})
-	Sweepers: ${sweepersFee.toLocaleString()} (${isSweepersPaid ? 'COLLECTED' : 'PENDING'})
-	Labour: Sales person 1 = ${labor1.toLocaleString()}
-		  Sales Assistant = ${labor2.toLocaleString()}
-Total expenses = ${totalExpensesSum.toLocaleString()}
-
-Balance After expenses = ${salesAfterCredit.toLocaleString()} - ${totalExpensesSum.toLocaleString()} 
-			     = ${balanceAfterExpenses.toLocaleString()}
-
-Cash (deposited to Mpesa / equity) = ${cashDeposited.toLocaleString()} (master to approve)
-Mpesa deposited directly 		  = ${mpesaDirect.toLocaleString()} (master to approve)
-
-Total = ${totalRemitted.toLocaleString()} (${isBalanced ? 'when successfully balanced' : 'discrepancy detected'}).`;
-
-  const handleShare = async () => {
+  const handleApprove = async () => {
+    if (isSealing) return;
+    setIsSealing(true);
     try {
-      await Share.share({
-        message: rawReceiptText,
-        title: `Wakulima 14:00 COB Closure - ${currentDateText}`,
-      });
-    } catch {
-      // ignore
-    }
-  };
-
-  const handleApprove = () => {
-    if (activeRec) {
-      approveDailyReconciliation(activeRec.id);
-      Alert.alert(
-        '✅ Daily Closure Approved',
-        `Master sign-off confirmed! Cash of Ksh ${cashDeposited.toLocaleString()} and M-Pesa direct of Ksh ${mpesaDirect.toLocaleString()} (Total Ksh ${totalRemitted.toLocaleString()}) verified.`
-      );
-    } else {
-      Alert.alert(
-        '✅ Live Daily Closure Stream Sealed',
-        `Master audit approved for ${currentDateText}!\nCash In Hand: Ksh ${cashDeposited.toLocaleString()}\nM-Pesa Direct: Ksh ${mpesaDirect.toLocaleString()}\nTotal Remitted: Ksh ${totalRemitted.toLocaleString()}`
-      );
+      if (activeRec) {
+        await approveDailyReconciliation(activeRec.id);
+        setSelectedView(activeRec.id);
+        Alert.alert(
+          '✅ Daily Closure Approved',
+          `Master sign-off confirmed! Cash of Ksh ${cashDeposited.toLocaleString()} and M-Pesa direct of Ksh ${mpesaDirect.toLocaleString()} (Total Ksh ${totalRemitted.toLocaleString()}) verified.`
+        );
+      } else if (currentBatch) {
+        const createdRec = await performCobReconciliation({
+          physicalCountGrade1: closingG1,
+          physicalCountGrade2: closingG2,
+          actualCashInHand: cashDeposited,
+          notes: 'Master Direct Seal & Approval',
+        });
+        if (createdRec) {
+          if (createdRec.masterApprovalStatus !== 'APPROVED') {
+            await approveDailyReconciliation(createdRec.id);
+          }
+          setSelectedView(createdRec.id);
+        } else {
+          setLocallySealed(true);
+        }
+        Alert.alert(
+          '✅ Daily Closure Sealed & Approved',
+          `Sealed receipt recorded for ${currentDateText}!\nCash In Hand: Ksh ${cashDeposited.toLocaleString()}\nM-Pesa Direct: Ksh ${mpesaDirect.toLocaleString()}\nTotal Remitted: Ksh ${totalRemitted.toLocaleString()}`
+        );
+      } else {
+        setLocallySealed(true);
+        Alert.alert(
+          '✅ Daily Closure Sealed & Approved',
+          `Master audit approved for ${currentDateText}!\nCash In Hand: Ksh ${cashDeposited.toLocaleString()}\nM-Pesa Direct: Ksh ${mpesaDirect.toLocaleString()}\nTotal Remitted: Ksh ${totalRemitted.toLocaleString()}`
+        );
+      }
+    } catch (err: any) {
+      Alert.alert('Approval Failed', err?.message || 'Unable to seal daily closure. Please try again.');
+    } finally {
+      setIsSealing(false);
     }
   };
 
   return (
     <View style={styles.outerWrapper}>
-      {/* Day Closure Selector (Live Stream + Historical Records) */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.historySelectorRow}>
-        <TouchableOpacity
-          style={[styles.historyTab, isViewingLive && styles.historyTabLive]}
-          onPress={() => setSelectedView('LIVE')}
-        >
-          <Text style={[styles.historyTabText, isViewingLive && styles.historyTabTextActive]}>
-            LIVE STREAM (Day {currentBatch?.dayNumber || 1})
-          </Text>
-        </TouchableOpacity>
-
-        {reconciliations.map((rec, idx) => {
-          const isSelected = !isViewingLive && rec.id === activeRec?.id;
-          return (
-            <TouchableOpacity
-              key={rec.id}
-              style={[styles.historyTab, isSelected && styles.historyTabActive]}
-              onPress={() => setSelectedView(rec.id)}
-            >
-              <Text style={[styles.historyTabText, isSelected && styles.historyTabTextActive]}>
-                Day {rec.dayNumber || idx + 1} ({rec.date})
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </ScrollView>
+      {/* Historical Closure Selector (if any past closures exist) */}
+      {reconciliations.length > 0 && (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.historySelectorRow}>
+          {reconciliations.map((rec, idx) => {
+            const isSelected = !isViewingLive && rec.id === activeRec?.id;
+            return (
+              <TouchableOpacity
+                key={rec.id}
+                style={[styles.historyTab, isSelected && styles.historyTabActive]}
+                onPress={() => setSelectedView(isSelected ? 'LIVE' : rec.id)}
+              >
+                <Text style={[styles.historyTabText, isSelected && styles.historyTabTextActive]}>
+                  Day {rec.dayNumber || idx + 1} ({rec.date})
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      )}
 
       {/* Main Flowing Thermal Receipt Paper */}
       <View style={[styles.receiptPaper, isDarkMode && styles.receiptPaperDark]}>
@@ -349,19 +330,10 @@ Total = ${totalRemitted.toLocaleString()} (${isBalanced ? 'when successfully bal
 
         {/* Header Block */}
         <View style={styles.headerBlock}>
-          <View style={[styles.topActionRow, isViewingLive && { justifyContent: 'flex-end' }]}>
-            {!isViewingLive && (
-              <View style={[styles.tagPill, isDarkMode && { backgroundColor: '#1B4F55', borderColor: '#7AB5BC', borderWidth: 0.75 }]}>
-                <Ionicons name="scale" size={12} color={isDarkMode ? '#CFE9EC' : '#0891B2'} />
-                <Text style={[styles.tagPillText, isDarkMode && { color: '#F0FDFA' }]}>
-                  SEALED 14:00 COB RECONCILIATION
-                </Text>
-              </View>
-            )}
-            <TouchableOpacity onPress={handleShare} style={[styles.shareBtn, isDarkMode && { backgroundColor: '#256A71', borderColor: '#7AB5BC', borderWidth: 0.75 }]} activeOpacity={0.7}>
-              <Ionicons name="share-social-outline" size={14} color={isDarkMode ? '#F0FDFA' : '#0891B2'} />
-              <Text style={[styles.shareBtnText, isDarkMode && { color: '#F0FDFA' }]}>Share</Text>
-            </TouchableOpacity>
+          <View style={styles.topActionRow}>
+            <Text style={[styles.tagPillText, { fontSize: 12, fontWeight: '800', color: isDarkMode ? '#7DD3FC' : '#0891B2' }]}>
+              Day {isViewingLive ? (currentBatch?.dayNumber || 1) : (activeRec?.dayNumber || 1)}
+            </Text>
           </View>
 
           <Text style={[styles.storeHeading, { fontFamily: monospaceFont }, isDarkMode && { color: '#F0FDFA' }]}>
@@ -370,45 +342,6 @@ Total = ${totalRemitted.toLocaleString()} (${isBalanced ? 'when successfully bal
           <Text style={[styles.marketSub, { fontFamily: monospaceFont }, isDarkMode && { color: '#CFE9EC' }]}>
             WAKULIMA WHOLESALE ONION MARKET • NAIROBI
           </Text>
-
-          {/* Master Approval Status Banner */}
-          <View
-            style={[
-              styles.approvalStatusBanner,
-              isApproved
-                ? styles.approvalBannerApproved
-                : isViewingLive
-                ? styles.approvalBannerLive
-                : styles.approvalBannerPending,
-              isDarkMode && { backgroundColor: '#256A71', borderColor: '#FDE68A', borderWidth: 0.75 },
-            ]}
-          >
-            <Ionicons
-              name={isApproved ? 'checkmark-circle' : 'time'}
-              size={13}
-              color={isDarkMode ? '#FDE68A' : (isApproved ? '#059669' : isViewingLive ? '#0891B2' : '#D97706')}
-            />
-            <Text
-              style={[
-                styles.approvalStatusText,
-                {
-                  color: isDarkMode
-                    ? '#FDE68A'
-                    : isApproved
-                    ? '#059669'
-                    : isViewingLive
-                    ? '#0891B2'
-                    : '#D97706',
-                },
-              ]}
-            >
-              {isApproved
-                ? `ALL EXPENSES APPROVED & REMITTANCE VERIFIED`
-                : isViewingLive
-                ? `LIVE AUDIT STREAM • APPROVE DEDUCTIONS BELOW AS THEY OCCUR`
-                : `PENDING MASTER APPROVAL • CASH TRANSFER QUEUED`}
-            </Text>
-          </View>
         </View>
 
         <Text style={[styles.dashedLine, { fontFamily: monospaceFont }, isDarkMode && { color: '#7AB5BC' }]}>
@@ -679,15 +612,20 @@ Total = ${totalRemitted.toLocaleString()} (${isBalanced ? 'when successfully bal
         </View>
 
         {/* 11. Master Approval Action / Signature */}
-        {role === 'MERCHANT' && (!isApproved || isViewingLive) ? (
+        {role === 'MERCHANT' && !isApproved ? (
           <TouchableOpacity
-            style={[styles.masterApproveBtn, isDarkMode && styles.masterApproveBtnDark]}
+            style={[
+              styles.masterApproveBtn,
+              isDarkMode && styles.masterApproveBtnDark,
+              isSealing && { opacity: 0.6 },
+            ]}
             onPress={handleApprove}
+            disabled={isSealing}
             activeOpacity={0.8}
           >
             <Ionicons name="checkmark-done-circle" size={18} color={isDarkMode ? '#FDE68A' : '#FFFFFF'} />
             <Text style={[styles.masterApproveBtnText, isDarkMode && { color: '#FDE68A' }]}>
-              APPROVE & SEAL DAY CLOSURE (KSH {totalRemitted.toLocaleString()})
+              {isSealing ? 'SEALING DAY...' : 'APPROVE & SEAL DAY'}
             </Text>
           </TouchableOpacity>
         ) : isApproved ? (
@@ -705,20 +643,6 @@ Total = ${totalRemitted.toLocaleString()} (${isBalanced ? 'when successfully bal
             </Text>
           </View>
         )}
-
-        {/* Serrated Bottom Edge Effect */}
-        <View style={styles.serratedEdge}>
-          <Text style={[styles.serratedText, isDarkMode && { color: '#475569' }]}>
-            - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-          </Text>
-        </View>
-
-        {/* Stamp Footer */}
-        <View style={styles.stampFooter}>
-          <Text style={[styles.stampFooterText, { fontFamily: monospaceFont }, isDarkMode && { color: '#38BDF8' }]}>
-            [ {isApproved ? 'SEALED & APPROVED' : isViewingLive ? 'LIVE STREAM' : 'AUDIT PENDING'} • WAKULIMA MARKET 14:00 COB ]
-          </Text>
-        </View>
       </View>
     </View>
   );
@@ -782,8 +706,8 @@ const styles = StyleSheet.create({
   },
   receiptPaperDark: {
     backgroundColor: '#1B4F55',
-    borderColor: '#7AB5BC',
-    borderWidth: 0.75,
+    borderWidth: 0,
+    borderColor: 'transparent',
   },
   serratedEdge: {
     alignItems: 'center',
@@ -820,22 +744,6 @@ const styles = StyleSheet.create({
   tagPillText: {
     fontSize: 9,
     fontWeight: '800',
-    color: '#0891B2',
-  },
-  shareBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: '#F0FDFA',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: '#CCFBF1',
-  },
-  shareBtnText: {
-    fontSize: 10,
-    fontWeight: '700',
     color: '#0891B2',
   },
   storeHeading: {

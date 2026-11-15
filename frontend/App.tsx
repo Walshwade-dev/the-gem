@@ -29,6 +29,7 @@ import { UserRole } from './src/types';
 // Components
 import { Header } from './src/components/Header';
 import { BatchOverviewCard } from './src/components/BatchOverviewCard';
+import { ImageLightboxModal, LightboxImageItem } from './src/components/ui/ImageLightboxModal';
 import { SalesLogger } from './src/components/SalesLogger';
 import { FinancialSummaryCard } from './src/components/FinancialSummaryCard';
 import { LockdownScreen } from './src/components/LockdownScreen';
@@ -48,7 +49,7 @@ import { FilterChips, FilterChipOption } from './src/components/ui/FilterChips';
 import { ProduceListingCard, ProduceListingItem } from './src/components/ui/ProduceListingCard';
 import { UserProfileSection } from './src/components/ui/UserProfileSection';
 import { StatusAlertToast } from './src/components/ui/StatusAlertToast';
-import { MasterBatchLedgerReceipt } from './src/components/ui/MasterBatchLedgerReceipt';
+import { MasterBatchLedgerReceipt, BatchDispatchReportCard } from './src/components/ui/MasterBatchLedgerReceipt';
 import { CreditRecordsView } from './src/components/ui/CreditRecordsView';
 import { DailyClosureReceipt } from './src/components/ui/DailyClosureReceipt';
 import { NotificationsModal } from './src/components/ui/NotificationsModal';
@@ -61,10 +62,12 @@ function MainScreen() {
     role,
     sales,
     currentBatch,
+    historicalBatches,
     expenses,
     customerCredits,
     batchProducts,
     deleteBatchProduct,
+    selectActiveBatch,
     approveCreditSale,
     rejectCreditSale,
     resetToSampleData,
@@ -76,10 +79,12 @@ function MainScreen() {
       role: s.role,
       sales: s.sales,
       currentBatch: s.currentBatch,
+      historicalBatches: s.historicalBatches,
       expenses: s.expenses,
       customerCredits: s.customerCredits,
       batchProducts: s.batchProducts,
       deleteBatchProduct: s.deleteBatchProduct,
+      selectActiveBatch: s.selectActiveBatch,
       approveCreditSale: s.approveCreditSale,
       rejectCreditSale: s.rejectCreditSale,
       resetToSampleData: s.resetToSampleData,
@@ -113,10 +118,39 @@ function MainScreen() {
   const [showAuth, setShowAuth] = useState<boolean>(false);
   const [authRole, setAuthRole] = useState<UserRole>('SELLER');
   const [showBatchProduceModal, setShowBatchProduceModal] = useState<boolean>(false);
+  const [batchModalInitialMode, setBatchModalInitialMode] = useState<'view' | 'add' | 'prices'>('view');
+  const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null);
+  const [hasSelectedSalesBatch, setHasSelectedSalesBatch] = useState<boolean>(false);
+
+  const activeBatchesList = useMemo(() => {
+    const productBatchIds = new Set(batchProducts.map((p) => p.batchId).filter(Boolean));
+    const all = [currentBatch, ...historicalBatches].filter(
+      (b): b is NonNullable<typeof b> =>
+        Boolean(b && b.status === 'ACTIVE' && productBatchIds.has(b.id))
+    );
+    return all.sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''));
+  }, [currentBatch, historicalBatches, batchProducts]);
+
+  const formatShortOriginForBatch = (batch: NonNullable<typeof currentBatch>) => {
+    const reg = batch.origin.regionName || '';
+    const spec = batch.origin.specificLocation || '';
+    if (/singida/i.test(reg) || /singida/i.test(spec)) return 'Singida, Tanzania';
+    if (/tanzania/i.test(reg)) return 'Northern Tanzania';
+    const clean = reg.split('(')[0].trim();
+    const words = clean.split(/\s+/).filter(Boolean);
+    return words.slice(0, 2).join(' ') || 'Singida, Tanzania';
+  };
+  const [lightboxState, setLightboxState] = useState<{
+    visible: boolean;
+    images: LightboxImageItem[];
+    initialIndex: number;
+  }>({ visible: false, images: [], initialIndex: 0 });
 
   // Bottom Liquid Glass Navigation State & Filter Chips
   const [activeNavTab, setActiveNavTab] = useState<MainAppTab>('sales');
   const [ledgerSubTab, setLedgerSubTab] = useState<'bookkeeping' | 'credit_records' | 'daily_closures'>('bookkeeping');
+  const [selectedLedgerBatchId, setSelectedLedgerBatchId] = useState<string>('');
+  const [showLedgerBatchFilter, setShowLedgerBatchFilter] = useState<boolean>(false);
   const [selectedProduceFilter, setSelectedProduceFilter] = useState<string>('ALL');
   const [toastNotification, setToastNotification] = useState<{
     type: 'SUCCESS' | 'INFO' | 'WARNING' | 'ERROR';
@@ -137,6 +171,71 @@ function MainScreen() {
     const words = clean.split(/\s+/).filter(Boolean);
     return words.slice(0, 2).join(' ') || 'Singida, Tanzania';
   };
+
+  // Live Sales Stream Filtering & Pagination
+  const [showStreamFilters, setShowStreamFilters] = useState<boolean>(false);
+  const [streamDayFilter, setStreamDayFilter] = useState<string>('ALL');
+  const [streamHourFilter, setStreamHourFilter] = useState<string>('ALL');
+  const [streamSellerFilter, setStreamSellerFilter] = useState<string>('ALL');
+  const [streamBatchFilter, setStreamBatchFilter] = useState<string>('ALL');
+  const [streamVisibleCount, setStreamVisibleCount] = useState<number>(8);
+
+  const allKnownBatches = useMemo(
+    () => [currentBatch, ...historicalBatches].filter((b): b is NonNullable<typeof b> => Boolean(b)),
+    [currentBatch, historicalBatches]
+  );
+
+  const ledgerBatch = useMemo(
+    () => allKnownBatches.find((b) => b.id === selectedLedgerBatchId) || currentBatch || allKnownBatches[0] || null,
+    [allKnownBatches, selectedLedgerBatchId, currentBatch]
+  );
+
+  const streamDayOptions = useMemo(() => {
+    const days = new Set<string>();
+    for (const s of sales) {
+      const d = new Date(s.timestamp);
+      if (!isNaN(d.getTime())) days.add(d.toISOString().slice(0, 10));
+    }
+    return Array.from(days).sort((a, b) => b.localeCompare(a));
+  }, [sales]);
+
+  const streamHourOptions = useMemo(() => {
+    const hours = new Set<string>();
+    for (const s of sales) {
+      const d = new Date(s.timestamp);
+      if (isNaN(d.getTime())) continue;
+      if (streamDayFilter !== 'ALL' && d.toISOString().slice(0, 10) !== streamDayFilter) continue;
+      hours.add(String(d.getHours()).padStart(2, '0'));
+    }
+    return Array.from(hours).sort((a, b) => b.localeCompare(a));
+  }, [sales, streamDayFilter]);
+
+  const streamSellerOptions = useMemo(() => {
+    const sellers = new Set<string>();
+    for (const s of sales) {
+      if (s.sellerName) sellers.add(s.sellerName);
+    }
+    return Array.from(sellers).sort();
+  }, [sales]);
+
+  const filteredSales = useMemo(() => {
+    return sales.filter((s) => {
+      const d = new Date(s.timestamp);
+      const dayKey = !isNaN(d.getTime()) ? d.toISOString().slice(0, 10) : '';
+      const hourKey = !isNaN(d.getTime()) ? String(d.getHours()).padStart(2, '0') : '';
+      if (streamDayFilter !== 'ALL' && dayKey !== streamDayFilter) return false;
+      if (streamHourFilter !== 'ALL' && hourKey !== streamHourFilter) return false;
+      if (streamSellerFilter !== 'ALL' && s.sellerName !== streamSellerFilter) return false;
+      if (role === 'MERCHANT' && streamBatchFilter !== 'ALL' && s.batchId !== streamBatchFilter) return false;
+      return true;
+    });
+  }, [sales, streamDayFilter, streamHourFilter, streamSellerFilter, streamBatchFilter, role]);
+
+  const activeStreamFilterCount =
+    (streamDayFilter !== 'ALL' ? 1 : 0) +
+    (streamHourFilter !== 'ALL' ? 1 : 0) +
+    (streamSellerFilter !== 'ALL' ? 1 : 0) +
+    (role === 'MERCHANT' && streamBatchFilter !== 'ALL' ? 1 : 0);
 
   const produceFilterOptions: FilterChipOption[] = [
     { id: 'ALL', label: 'All Stock', count: batchProducts.length },
@@ -231,11 +330,148 @@ function MainScreen() {
         >
           {/* TAB 1: LIVE SALES & OPERATIONS */}
           {activeNavTab === 'sales' && (
+            role === 'MERCHANT' && !hasSelectedSalesBatch && activeBatchesList.length > 0 ? (
+              <View style={styles.salesBatchPickerSection}>
+                <View style={styles.tabSectionHeader}>
+                  <Text style={[styles.tabSectionTitle, isDarkMode && { color: '#F0FDFA' }]}>
+                    SELECT BATCH FOR SALES ({activeBatchesList.length} ACTIVE)
+                  </Text>
+                  <Text style={[styles.tabSectionSubtitle, isDarkMode && { color: '#CFE9EC' }]}>
+                    Choose which active truck batch to sell from. Batches remain active until fully sold and reconciled.
+                  </Text>
+                </View>
+
+                {activeBatchesList.map((batch) => {
+                  const hasGrade2 =
+                    batch.initialGrade2Nets > 0 || (batch.pricePerBagGrade2 ?? 0) > 0;
+                  return (
+                    <TouchableOpacity
+                      key={batch.id}
+                      style={[
+                        styles.salesBatchPickCard,
+                        isDarkMode && styles.salesBatchPickCardDark,
+                        Platform.OS === 'web' && ({ cursor: 'pointer' } as any),
+                      ]}
+                      activeOpacity={0.85}
+                      onPress={() => {
+                        selectActiveBatch(batch.id);
+                        setHasSelectedSalesBatch(true);
+                      }}
+                    >
+                      {/* Row 1: Batch ID */}
+                      <View style={styles.batchIdRow}>
+                        <View style={[styles.produceBatchBadge, isDarkMode && styles.produceBatchBadgeDark]}>
+                          <Text
+                            style={[styles.produceBatchBadgeText, isDarkMode && { color: '#FDE68A' }]}
+                            numberOfLines={1}
+                          >
+                            {batch.batchNumber}
+                          </Text>
+                        </View>
+                      </View>
+
+                      {/* Row 2: Source Location & Hauling Truck Reg Plate on the far right */}
+                      <View style={styles.batchSourceTruckRow}>
+                        <View style={styles.batchTopOriginWrap}>
+                          <Ionicons
+                            name="location-outline"
+                            size={13}
+                            color={isDarkMode ? '#FDE68A' : '#0891B2'}
+                          />
+                          <Text
+                            style={[styles.batchTopMetaText, isDarkMode && { color: '#F0FDFA' }]}
+                            numberOfLines={1}
+                          >
+                            {formatShortOriginForBatch(batch)}
+                          </Text>
+                        </View>
+                        <View style={styles.batchTruckWrap}>
+                          <Ionicons
+                            name="car-outline"
+                            size={13}
+                            color={isDarkMode ? '#CFE9EC' : '#475569'}
+                          />
+                          <Text
+                            style={[styles.batchTopMetaTruck, isDarkMode && { color: '#CFE9EC' }]}
+                            numberOfLines={1}
+                          >
+                            {batch.truckPlate}
+                          </Text>
+                        </View>
+                      </View>
+
+                      {/* Row 3: Grades, Price & Quantity in List Form */}
+                      <View style={[styles.batchSummaryBox, isDarkMode && styles.batchSummaryBoxDark]}>
+                        <View
+                          style={[
+                            styles.batchListRow,
+                            isDarkMode && styles.batchListRowDark,
+                            !hasGrade2 && { borderBottomWidth: 0, paddingBottom: 0 },
+                          ]}
+                        >
+                          <Text style={[styles.batchListLabel, isDarkMode && { color: '#B4D6D9' }]}>
+                            Grade 1 (Ksh {batch.pricePerBagGrade1?.toLocaleString() ?? 1300})
+                          </Text>
+                          <Text
+                            style={[
+                              styles.batchListValue,
+                              { color: isDarkMode ? '#FDE68A' : '#0891B2' },
+                            ]}
+                          >
+                            {batch.remainingGrade1Nets} nets left
+                          </Text>
+                        </View>
+
+                        {hasGrade2 && (
+                          <View
+                            style={[
+                              styles.batchListRow,
+                              { borderBottomWidth: 0, paddingBottom: 0 },
+                            ]}
+                          >
+                            <Text style={[styles.batchListLabel, isDarkMode && { color: '#B4D6D9' }]}>
+                              Grade 2 (Ksh {batch.pricePerBagGrade2?.toLocaleString() ?? 1000})
+                            </Text>
+                            <Text
+                              style={[
+                                styles.batchListValue,
+                                { color: isDarkMode ? '#FDE68A' : '#0F766E' },
+                              ]}
+                            >
+                              {batch.remainingGrade2Nets} nets left
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            ) : (
             <>
+              {role === 'MERCHANT' && activeBatchesList.length > 0 && currentBatch && (
+                <View style={[styles.switchBatchBar, isDarkMode && styles.switchBatchBarDark]}>
+                  <TouchableOpacity
+                    style={styles.switchBatchBtn}
+                    onPress={() => setHasSelectedSalesBatch(false)}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="swap-horizontal" size={15} color={isDarkMode ? '#FDE68A' : '#0891B2'} />
+                    <Text style={[styles.switchBatchBtnText, isDarkMode && { color: '#FDE68A' }]}>
+                      Switch Batch ({activeBatchesList.length} Active)
+                    </Text>
+                  </TouchableOpacity>
+                  <Text style={[styles.switchBatchActiveLabel, isDarkMode && { color: '#CFE9EC' }]} numberOfLines={1}>
+                    {currentBatch.batchNumber} • {currentBatch.truckPlate}
+                  </Text>
+                </View>
+              )}
+
               {/* 2. Active Truck Batch & Current Stock Card */}
               <BatchOverviewCard 
                 onOpenNewBatchModal={() => {
                   setActiveNavTab('catalog');
+                  setBatchModalInitialMode('add');
                   setShowBatchProduceModal(true);
                 }}
               />
@@ -353,10 +589,155 @@ function MainScreen() {
                 <MaterialCommunityIcons name="history" size={17} color={THEME.colors.primary} />
                 <Text style={styles.transTitle}>LIVE SALES STREAM (MAUZO YA SASA)</Text>
               </View>
-              <Text style={styles.transCountBadge}>{sales.length} transactions</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <TouchableOpacity
+                  style={[
+                    styles.streamFilterToggleBtn,
+                    isDarkMode && styles.streamFilterToggleBtnDark,
+                    (showStreamFilters || activeStreamFilterCount > 0) && styles.streamFilterToggleBtnActive,
+                  ]}
+                  onPress={() => setShowStreamFilters(!showStreamFilters)}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons
+                    name="funnel-outline"
+                    size={12}
+                    color={(showStreamFilters || activeStreamFilterCount > 0) ? '#FFFFFF' : (isDarkMode ? '#CFE9EC' : '#0891B2')}
+                  />
+                  <Text
+                    style={[
+                      styles.streamFilterToggleText,
+                      isDarkMode && { color: '#CFE9EC' },
+                      (showStreamFilters || activeStreamFilterCount > 0) && { color: '#FFFFFF' },
+                    ]}
+                  >
+                    Filter{activeStreamFilterCount > 0 ? ` (${activeStreamFilterCount})` : ''}
+                  </Text>
+                </TouchableOpacity>
+                <Text style={styles.transCountBadge}>{filteredSales.length} sales</Text>
+              </View>
             </View>
 
-            {sales.slice(0, 5).map(item => (
+            {showStreamFilters && (
+              <View style={[styles.streamFilterPanel, isDarkMode && styles.streamFilterPanelDark]}>
+                <View style={styles.streamFilterGroup}>
+                  <Text style={[styles.streamFilterLabel, isDarkMode && { color: '#B4D6D9' }]}>DAY</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.streamChipRow}>
+                    <TouchableOpacity
+                      style={[styles.streamChip, streamDayFilter === 'ALL' && styles.streamChipActive]}
+                      onPress={() => setStreamDayFilter('ALL')}
+                    >
+                      <Text style={[styles.streamChipText, streamDayFilter === 'ALL' && styles.streamChipTextActive]}>All Days</Text>
+                    </TouchableOpacity>
+                    {streamDayOptions.map((day) => (
+                      <TouchableOpacity
+                        key={day}
+                        style={[styles.streamChip, streamDayFilter === day && styles.streamChipActive]}
+                        onPress={() => setStreamDayFilter(day)}
+                      >
+                        <Text style={[styles.streamChipText, streamDayFilter === day && styles.streamChipTextActive]}>{day}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
+
+                <View style={styles.streamFilterGroup}>
+                  <Text style={[styles.streamFilterLabel, isDarkMode && { color: '#B4D6D9' }]}>HOUR</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.streamChipRow}>
+                    <TouchableOpacity
+                      style={[styles.streamChip, streamHourFilter === 'ALL' && styles.streamChipActive]}
+                      onPress={() => setStreamHourFilter('ALL')}
+                    >
+                      <Text style={[styles.streamChipText, streamHourFilter === 'ALL' && styles.streamChipTextActive]}>All Hours</Text>
+                    </TouchableOpacity>
+                    {streamHourOptions.map((hr) => (
+                      <TouchableOpacity
+                        key={hr}
+                        style={[styles.streamChip, streamHourFilter === hr && styles.streamChipActive]}
+                        onPress={() => setStreamHourFilter(hr)}
+                      >
+                        <Text style={[styles.streamChipText, streamHourFilter === hr && styles.streamChipTextActive]}>{hr}:00</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
+
+                {streamSellerOptions.length > 0 && (
+                  <View style={styles.streamFilterGroup}>
+                    <Text style={[styles.streamFilterLabel, isDarkMode && { color: '#B4D6D9' }]}>SALESPERSON</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.streamChipRow}>
+                      <TouchableOpacity
+                        style={[styles.streamChip, streamSellerFilter === 'ALL' && styles.streamChipActive]}
+                        onPress={() => setStreamSellerFilter('ALL')}
+                      >
+                        <Text style={[styles.streamChipText, streamSellerFilter === 'ALL' && styles.streamChipTextActive]}>All Sellers</Text>
+                      </TouchableOpacity>
+                      {streamSellerOptions.map((sellerName) => (
+                        <TouchableOpacity
+                          key={sellerName}
+                          style={[styles.streamChip, streamSellerFilter === sellerName && styles.streamChipActive]}
+                          onPress={() => setStreamSellerFilter(sellerName)}
+                        >
+                          <Text style={[styles.streamChipText, streamSellerFilter === sellerName && styles.streamChipTextActive]}>{sellerName}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  </View>
+                )}
+
+                {role === 'MERCHANT' && allKnownBatches.length > 0 && (
+                  <View style={styles.streamFilterGroup}>
+                    <Text style={[styles.streamFilterLabel, isDarkMode && { color: '#B4D6D9' }]}>BATCH</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.streamChipRow}>
+                      <TouchableOpacity
+                        style={[styles.streamChip, streamBatchFilter === 'ALL' && styles.streamChipActive]}
+                        onPress={() => setStreamBatchFilter('ALL')}
+                      >
+                        <Text style={[styles.streamChipText, streamBatchFilter === 'ALL' && styles.streamChipTextActive]}>All Batches</Text>
+                      </TouchableOpacity>
+                      {allKnownBatches.map((b) => (
+                        <TouchableOpacity
+                          key={b.id}
+                          style={[styles.streamChip, streamBatchFilter === b.id && styles.streamChipActive]}
+                          onPress={() => setStreamBatchFilter(b.id)}
+                        >
+                          <Text style={[styles.streamChipText, streamBatchFilter === b.id && styles.streamChipTextActive]}>{b.batchNumber}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  </View>
+                )}
+
+                {activeStreamFilterCount > 0 && (
+                  <TouchableOpacity
+                    style={styles.clearStreamFiltersBtn}
+                    onPress={() => {
+                      setStreamDayFilter('ALL');
+                      setStreamHourFilter('ALL');
+                      setStreamSellerFilter('ALL');
+                      setStreamBatchFilter('ALL');
+                    }}
+                  >
+                    <Text style={styles.clearStreamFiltersText}>Clear All Filters</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
+
+            {filteredSales.slice(0, streamVisibleCount).map(item => {
+              const saleBatch = allKnownBatches.find((b) => b.id === item.batchId);
+              const displayCustomer =
+                item.buyerName || `CUST-${item.id.slice(0, 6).toUpperCase()}`;
+              const recordedDate = new Date(item.timestamp);
+              const formattedTime = !isNaN(recordedDate.getTime())
+                ? recordedDate.toLocaleString('en-KE', {
+                    day: '2-digit',
+                    month: 'short',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })
+                : '';
+              return (
               <View key={item.id} style={[styles.transCard, isDarkMode && styles.transCardDark]}>
                 <View style={styles.transLeft}>
                   <View style={[
@@ -368,13 +749,36 @@ function MainScreen() {
                     </Text>
                   </View>
                   <View style={styles.transTextCol}>
-                    <Text style={[styles.transBuyer, isDarkMode && { color: '#FFFFFF' }]} numberOfLines={1}>
-                      {item.buyerName || 'Market Buyer'}
-                      {item.buyerNationalId ? ` (ID: ${item.buyerNationalId})` : ''}
+                    <View style={styles.transCustomerBatchRow}>
+                      <Text
+                        style={[styles.transBuyer, isDarkMode && { color: '#FFFFFF' }]}
+                        numberOfLines={1}
+                        ellipsizeMode="tail"
+                      >
+                        {displayCustomer}
+                        {item.buyerNationalId ? ` (${item.buyerNationalId})` : ''}
+                      </Text>
+                      <View style={[styles.transStockChip, isDarkMode && styles.transStockChipDark]}>
+                        <Text
+                          style={[styles.transStockChipText, isDarkMode && { color: '#7DD3FC' }]}
+                          numberOfLines={1}
+                          ellipsizeMode="tail"
+                        >
+                          {saleBatch?.batchNumber || 'Active Batch'}
+                        </Text>
+                      </View>
+                    </View>
+                    <Text style={[styles.transDetails, isDarkMode && { color: '#CFE9EC' }]} numberOfLines={1}>
+                      {item.quantityNets} nets @ Ksh {item.negotiatedUnitPrice.toLocaleString()}/net
                     </Text>
-                    <Text style={[styles.transDetails, isDarkMode && { color: '#A1A1AA' }]} numberOfLines={1}>
-                      {item.quantityNets} nets @ Ksh {item.negotiatedUnitPrice.toLocaleString()}
+                    <Text style={[styles.transMetaLine, isDarkMode && { color: '#94A3B8' }]} numberOfLines={1}>
+                      By: {item.sellerName || 'Staff'}{formattedTime ? ` • ${formattedTime}` : ''}
                     </Text>
+                    {item.paymentMethod === 'MPESA' && item.mpesaReceiptCode && (
+                      <Text style={[styles.transDetails, { color: isDarkMode ? '#6EE7B7' : '#047857', fontWeight: '700' }]} numberOfLines={1}>
+                        M-Pesa Ref: {item.mpesaReceiptCode}
+                      </Text>
+                    )}
                     {item.paymentMethod === 'CREDIT' && item.creditApprovalStatus && (
                       <View style={[
                         styles.streamApprovalBadge,
@@ -405,11 +809,38 @@ function MainScreen() {
                     item.paymentMethod === 'MPESA' && styles.methodMpesa,
                     item.paymentMethod === 'CREDIT' && styles.methodCredit,
                   ]}>
-                    <Text style={styles.methodBadgeText}>{item.paymentMethod}</Text>
+                    <Text style={styles.methodBadgeText}>
+                      {item.paymentMethod === 'CREDIT' ? 'CREDIT' : `PAID • ${item.paymentMethod}`}
+                    </Text>
                   </View>
                 </View>
               </View>
-            ))}
+              );
+            })}
+
+            {filteredSales.length > streamVisibleCount ? (
+              <TouchableOpacity
+                style={[styles.loadMoreStreamBtn, isDarkMode && styles.loadMoreStreamBtnDark]}
+                onPress={() => setStreamVisibleCount((c) => c + 15)}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="chevron-down" size={14} color={isDarkMode ? '#FDE68A' : '#0891B2'} />
+                <Text style={[styles.loadMoreStreamText, isDarkMode && { color: '#FDE68A' }]}>
+                  Load Earlier Sales ({filteredSales.length - streamVisibleCount} more)
+                </Text>
+              </TouchableOpacity>
+            ) : streamVisibleCount > 8 && filteredSales.length > 8 ? (
+              <TouchableOpacity
+                style={[styles.loadMoreStreamBtn, isDarkMode && styles.loadMoreStreamBtnDark]}
+                onPress={() => setStreamVisibleCount(8)}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="chevron-up" size={14} color={isDarkMode ? '#CFE9EC' : '#64748B'} />
+                <Text style={[styles.loadMoreStreamText, isDarkMode && { color: '#CFE9EC' }]}>
+                  Show Latest 8 Sales
+                </Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
                 </>
               )}
@@ -422,6 +853,7 @@ function MainScreen() {
                 </TouchableOpacity>
               </View>
             </>
+            )
           )}
 
           {/* TAB 2: PRODUCTS (CATALOG, BATCH CREATION & PRICE GOVERNANCE) */}
@@ -441,7 +873,10 @@ function MainScreen() {
                 <View style={styles.productsMasterActionBar}>
                   <TouchableOpacity
                     style={styles.addProductBtn}
-                    onPress={() => setShowBatchProduceModal(true)}
+                    onPress={() => {
+                      setBatchModalInitialMode('add');
+                      setShowBatchProduceModal(true);
+                    }}
                     activeOpacity={0.8}
                   >
                     <Ionicons name="add-circle" size={16} color="#FFFFFF" />
@@ -451,7 +886,10 @@ function MainScreen() {
                   {currentBatch && (
                     <TouchableOpacity
                       style={[styles.adjustPricesQuickBtn, isDarkMode && styles.adjustPricesQuickBtnDark]}
-                      onPress={() => setShowBatchProduceModal(true)}
+                      onPress={() => {
+                        setBatchModalInitialMode('prices');
+                        setShowBatchProduceModal(true);
+                      }}
                       activeOpacity={0.8}
                     >
                       <Ionicons name="options" size={15} color={isDarkMode ? '#38BDF8' : '#0891B2'} />
@@ -480,7 +918,10 @@ function MainScreen() {
                   {role === 'MERCHANT' && (
                     <TouchableOpacity
                       style={styles.emptyProductsUploadBtn}
-                      onPress={() => setShowBatchProduceModal(true)}
+                      onPress={() => {
+                        setBatchModalInitialMode('add');
+                        setShowBatchProduceModal(true);
+                      }}
                       activeOpacity={0.8}
                     >
                       <Ionicons name="cloud-upload" size={16} color="#FFFFFF" />
@@ -490,117 +931,211 @@ function MainScreen() {
                 </View>
               ) : (
                 <>
-                  {/* Produce Origin & Batch Contents Container (Clickable Parent Container) */}
-                  {currentBatch && (
+                  {/* Produce Origin & Batch Contents Containers (One card per active batch, newest below) */}
+                  {activeBatchesList.map((batch) => {
+                    const thisBatchProducts = batchProducts.filter((p) => p.batchId === batch.id);
+                    return (
                     <TouchableOpacity
+                      key={batch.id}
                       style={[styles.produceOriginCard, isDarkMode && styles.produceOriginCardDark]}
-                      onPress={() => setShowBatchProduceModal(true)}
+                      onPress={() => {
+                        setSelectedBatchId(batch.id);
+                        setBatchModalInitialMode('view');
+                        setShowBatchProduceModal(true);
+                      }}
                       activeOpacity={0.88}
                     >
-                      <View style={styles.produceOriginHeader}>
-                        <View style={styles.produceOriginTitleRow}>
-                          <Ionicons name="location" size={16} color="#0891B2" />
-                          <Text style={[styles.produceOriginTitle, isDarkMode && styles.textWhite]}>
-                            BATCH ORIGIN & TRACEABILITY
-                          </Text>
-                        </View>
-                        <View style={styles.produceBatchBadge}>
-                          <Text style={styles.produceBatchBadgeText}>{currentBatch.batchNumber}</Text>
-                        </View>
-                      </View>
-
-                      <View style={styles.produceOriginDetailsGrid}>
-                        <View style={styles.produceOriginDetailItem}>
-                          <Text style={styles.produceOriginDetailLabel}>PLACE OF ORIGIN</Text>
-                          <Text style={[styles.produceOriginDetailValue, isDarkMode && styles.textWhite]}>
-                            {getBatchShortOrigin()}
-                          </Text>
-                        </View>
-                        <View style={styles.produceOriginDetailItem}>
-                          <Text style={styles.produceOriginDetailLabel}>HAULING TRUCK</Text>
-                          <Text style={[styles.produceOriginDetailValue, isDarkMode && styles.textWhite]}>
-                            {currentBatch.truckPlate}
+                      {/* Row 1: Batch ID */}
+                      <View style={styles.batchIdRow}>
+                        <View
+                          style={[
+                            styles.produceBatchBadge,
+                            isDarkMode && styles.produceBatchBadgeDark,
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.produceBatchBadgeText,
+                              isDarkMode && { color: '#FDE68A' },
+                            ]}
+                            numberOfLines={1}
+                          >
+                            {batch.batchNumber}
                           </Text>
                         </View>
                       </View>
 
-                      {/* Batch Produce Contents Stored Inside This Container */}
-                      <View style={styles.batchContentsContainer}>
-                        {/* Batch Images Strip */}
-                        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.batchThumbnailsRow}>
-                          {batchProducts.map((p) => (
-                            <View key={p.id} style={styles.batchThumbnailWrapper}>
-                              <Image source={{ uri: p.photoUrl }} style={styles.batchThumbnailImg} />
+                      {/* Row 2: Source & Delivering Truck in the same line */}
+                      <View style={styles.batchSourceTruckRow}>
+                        <View style={styles.batchTopOriginWrap}>
+                          <Ionicons
+                            name="location-outline"
+                            size={13}
+                            color={isDarkMode ? '#FDE68A' : '#0891B2'}
+                          />
+                          <Text
+                            style={[
+                              styles.batchTopMetaText,
+                              isDarkMode && { color: '#F0FDFA' },
+                            ]}
+                            numberOfLines={1}
+                          >
+                            {formatShortOriginForBatch(batch)}
+                          </Text>
+                        </View>
+                        <View style={styles.batchTruckWrap}>
+                          <Ionicons
+                            name="car-outline"
+                            size={13}
+                            color={isDarkMode ? '#CFE9EC' : '#475569'}
+                          />
+                          <Text
+                            style={[
+                              styles.batchTopMetaTruck,
+                              isDarkMode && { color: '#CFE9EC' },
+                            ]}
+                            numberOfLines={1}
+                          >
+                            {batch.truckPlate}
+                          </Text>
+                        </View>
+                      </View>
+
+                      {/* Row 3: Product Images */}
+                      {(() => {
+                        const seen = new Set<string>();
+                        const thumbs: Array<{ uri: string; tag: string }> = [];
+                        for (const p of thisBatchProducts) {
+                          const tag = p.grade === 'GRADE_1' ? 'G1' : 'G2';
+                          const list = [p.photoUrl, ...(p.photoUrls ?? [])].filter(Boolean);
+                          for (const uri of list) {
+                            if (!seen.has(uri)) {
+                              seen.add(uri);
+                              thumbs.push({ uri, tag });
+                            }
+                          }
+                        }
+                        for (const uri of batch.photoUrls ?? []) {
+                          if (uri && !seen.has(uri)) {
+                            seen.add(uri);
+                            thumbs.push({ uri, tag: 'BATCH' });
+                          }
+                        }
+                        if (thumbs.length === 0) return null;
+                        if (thumbs.length === 1) {
+                          const single = thumbs[0];
+                          return (
+                            <TouchableOpacity
+                              style={styles.batchSingleImageWrapper}
+                              activeOpacity={0.85}
+                              onPress={(e) => {
+                                e.stopPropagation?.();
+                                setLightboxState({
+                                  visible: true,
+                                  images: [{ uri: single.uri, label: single.tag }],
+                                  initialIndex: 0,
+                                });
+                              }}
+                            >
+                              <Image source={{ uri: single.uri }} style={styles.batchSingleImage} resizeMode="cover" />
                               <View style={styles.batchThumbnailBadge}>
-                                <Text style={styles.batchThumbnailBadgeText}>{p.grade === 'GRADE_1' ? 'G1' : 'G2'}</Text>
+                                <Text style={styles.batchThumbnailBadgeText}>{single.tag}</Text>
                               </View>
-                            </View>
-                          ))}
-                        </ScrollView>
+                            </TouchableOpacity>
+                          );
+                        }
+                        return (
+                          <ScrollView
+                            horizontal
+                            showsHorizontalScrollIndicator={false}
+                            style={styles.batchThumbnailsRow}
+                            contentContainerStyle={{ gap: 8 }}
+                          >
+                            {thumbs.map((t, idx) => (
+                              <TouchableOpacity
+                                key={`${t.uri}-${idx}`}
+                                style={styles.batchThumbnailWrapper}
+                                activeOpacity={0.85}
+                                onPress={(e) => {
+                                  e.stopPropagation?.();
+                                  setLightboxState({
+                                    visible: true,
+                                    images: thumbs.map((item) => ({ uri: item.uri, label: item.tag })),
+                                    initialIndex: idx,
+                                  });
+                                }}
+                              >
+                                <Image source={{ uri: t.uri }} style={styles.batchThumbnailImg} resizeMode="cover" />
+                                <View style={styles.batchThumbnailBadge}>
+                                  <Text style={styles.batchThumbnailBadgeText}>{t.tag}</Text>
+                                </View>
+                              </TouchableOpacity>
+                            ))}
+                          </ScrollView>
+                        );
+                      })()}
 
-                        {/* Pricing, Packaging & Description Summary */}
-                        <View style={[styles.batchSummaryBox, isDarkMode && styles.batchSummaryBoxDark]}>
-                          <View style={styles.batchSummaryRow}>
-                            <View style={styles.summaryItem}>
-                              <Text style={styles.summaryLabel}>PACKAGE SIZE</Text>
-                              <Text style={[styles.summaryValue, isDarkMode && styles.textWhite]}>
-                                {batchProducts[0]?.packaging || 'Standard Nets'}
+                      {/* Row 4: Packaging, Grades & Quantity in List Form */}
+                      {(() => {
+                        const hasGrade2 =
+                          batch.initialGrade2Nets > 0 || (batch.pricePerBagGrade2 ?? 0) > 0;
+                        return (
+                          <View style={[styles.batchSummaryBox, isDarkMode && styles.batchSummaryBoxDark]}>
+                            <View style={[styles.batchListRow, isDarkMode && styles.batchListRowDark]}>
+                              <Text style={[styles.batchListLabel, isDarkMode && { color: '#B4D6D9' }]}>
+                                Packaging
+                              </Text>
+                              <Text style={[styles.batchListValue, isDarkMode && styles.textWhite]}>
+                                {thisBatchProducts[0]?.packaging || `${batch.packagingKg ?? 20}KG NET`}
                               </Text>
                             </View>
-                            <View style={styles.summaryItem}>
-                              <Text style={styles.summaryLabel}>WHOLESALE PRICES</Text>
-                              <Text style={[styles.summaryValue, { color: '#0891B2' }]}>
-                                G1: Ksh {currentBatch.pricePerBagGrade1?.toLocaleString() ?? 1300}
-                                {currentBatch.pricePerBagGrade2 ? ` • G2: Ksh ${currentBatch.pricePerBagGrade2.toLocaleString()}` : ''}
+
+                            <View
+                              style={[
+                                styles.batchListRow,
+                                isDarkMode && styles.batchListRowDark,
+                                !hasGrade2 && { borderBottomWidth: 0, paddingBottom: 0 },
+                              ]}
+                            >
+                              <Text style={[styles.batchListLabel, isDarkMode && { color: '#B4D6D9' }]}>
+                                Grade 1 (Ksh {batch.pricePerBagGrade1?.toLocaleString() ?? 1300})
+                              </Text>
+                              <Text
+                                style={[
+                                  styles.batchListValue,
+                                  { color: isDarkMode ? '#FDE68A' : '#0891B2' },
+                                ]}
+                              >
+                                {batch.remainingGrade1Nets} nets left
                               </Text>
                             </View>
-                          </View>
-                        </View>
 
-                        {/* Clickable Modal Trigger Banner */}
-                        <View style={styles.viewProduceTriggerBar}>
-                          <View style={{ flex: 1 }}>
-                            <Text style={styles.viewProduceTriggerTitle}>
-                              👁️ View Products, Photos & Pricing ({batchProducts.length})
-                            </Text>
-                            <Text style={styles.viewProduceTriggerSub}>
-                              Tap to open modal • {role === 'MERCHANT' ? 'Master upload, price shift & delete enabled' : 'Wholesale packaging and prices'}
-                            </Text>
+                            {hasGrade2 && (
+                              <View
+                                style={[
+                                  styles.batchListRow,
+                                  { borderBottomWidth: 0, paddingBottom: 0 },
+                                ]}
+                              >
+                                <Text style={[styles.batchListLabel, isDarkMode && { color: '#B4D6D9' }]}>
+                                  Grade 2 (Ksh {batch.pricePerBagGrade2?.toLocaleString() ?? 1000})
+                                </Text>
+                                <Text
+                                  style={[
+                                    styles.batchListValue,
+                                    { color: isDarkMode ? '#FDE68A' : '#0F766E' },
+                                  ]}
+                                >
+                                  {batch.remainingGrade2Nets} nets left
+                                </Text>
+                              </View>
+                            )}
                           </View>
-                          <View style={styles.viewProduceIconCircle}>
-                            <Ionicons name="arrow-forward" size={15} color="#FFFFFF" />
-                          </View>
-                        </View>
-                      </View>
+                        );
+                      })()}
                     </TouchableOpacity>
-                  )}
-
-                  <FilterChips
-                    options={produceFilterOptions}
-                    selectedId={selectedProduceFilter}
-                    onSelect={setSelectedProduceFilter}
-                    isDarkMode={isDarkMode}
-                  />
-
-                  <View style={{ marginTop: 8 }}>
-                    {filteredProduce.map((prod) => (
-                      <ProduceListingCard
-                        key={prod.id}
-                        item={prod}
-                        role={role}
-                        onDeleteProduct={handleDeleteProduct}
-                        onQuickLog={(item) => {
-                          setActiveNavTab('sales');
-                          setToastNotification({
-                            type: 'INFO',
-                            title: 'Selected Product',
-                            message: `Switched to sales logger for ${item.title}.`,
-                          });
-                        }}
-                        isDarkMode={isDarkMode}
-                      />
-                    ))}
-                  </View>
+                    );
+                  })}
                 </>
               )}
             </View>
@@ -723,93 +1258,114 @@ function MainScreen() {
               {/* SUB-VIEW 1: BOOKKEEPING & CASH OVERHEADS */}
               {ledgerSubTab === 'bookkeeping' && (
                 <View>
+                  {/* Batch Filter for Ledger Receipt, Sales & Expenses */}
+                  {allKnownBatches.length > 0 && (
+                    <View
+                      style={{
+                        marginHorizontal: 14,
+                        marginBottom: 12,
+                        backgroundColor: isDarkMode ? '#256A71' : '#FFFFFF',
+                        borderRadius: 12,
+                        paddingHorizontal: 12,
+                        paddingVertical: 10,
+                        shadowColor: isDarkMode ? '#0D2C30' : '#000000',
+                        shadowOffset: { width: 0, height: 2 },
+                        shadowOpacity: isDarkMode ? 0.25 : 0.06,
+                        shadowRadius: 6,
+                        elevation: 3,
+                      }}
+                    >
+                      <TouchableOpacity
+                        activeOpacity={0.75}
+                        onPress={() => setShowLedgerBatchFilter((prev) => !prev)}
+                        style={[
+                          { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+                          Platform.OS === 'web' && ({ cursor: 'pointer' } as any),
+                        ]}
+                      >
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
+                          <Ionicons name="filter" size={15} color={isDarkMode ? '#7DD3FC' : '#0891B2'} />
+                          <Text style={{ fontSize: 12, fontWeight: '800', color: isDarkMode ? '#F0FDFA' : '#0F172A' }}>
+                            Batch Filter:
+                          </Text>
+                          <View
+                            style={{
+                              backgroundColor: isDarkMode ? '#1B4F55' : '#E0F2FE',
+                              paddingHorizontal: 8,
+                              paddingVertical: 3,
+                              borderRadius: 6,
+                            }}
+                          >
+                            <Text style={{ fontSize: 11, fontWeight: '700', color: isDarkMode ? '#7DD3FC' : '#0369A1' }}>
+                              {ledgerBatch ? `${ledgerBatch.batchNumber} (${ledgerBatch.truckPlate})` : 'Select Batch'}
+                            </Text>
+                          </View>
+                        </View>
+                        <Ionicons
+                          name={showLedgerBatchFilter ? 'chevron-up' : 'chevron-down'}
+                          size={16}
+                          color={isDarkMode ? '#7DD3FC' : '#0891B2'}
+                        />
+                      </TouchableOpacity>
+
+                      {showLedgerBatchFilter && (
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: isDarkMode ? 'rgba(122, 181, 188, 0.25)' : '#E2E8F0' }}>
+                          {allKnownBatches.map((b) => {
+                            const isSelected = ledgerBatch?.id === b.id;
+                            return (
+                              <TouchableOpacity
+                                key={b.id}
+                                style={[
+                                  styles.streamChip,
+                                  isDarkMode && { backgroundColor: '#1B4F55', borderColor: '#7AB5BC' },
+                                  isSelected && styles.streamChipActive,
+                                  Platform.OS === 'web' && ({ cursor: 'pointer' } as any),
+                                ]}
+                                onPress={() => {
+                                  setSelectedLedgerBatchId(b.id);
+                                  setShowLedgerBatchFilter(false);
+                                }}
+                              >
+                                <Text
+                                  style={[
+                                    styles.streamChipText,
+                                    isDarkMode && { color: '#CFE9EC' },
+                                    isSelected && styles.streamChipTextActive,
+                                  ]}
+                                >
+                                  {b.batchNumber} ({b.truckPlate})
+                                </Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
+                      )}
+                    </View>
+                  )}
+
                   {/* Master Flowing Bookkeeping Receipt (Only for Master Account) */}
                   {role === 'MERCHANT' && (
-                    <MasterBatchLedgerReceipt isDarkMode={isDarkMode} />
+                    <MasterBatchLedgerReceipt
+                      isDarkMode={isDarkMode}
+                      selectedBatchId={ledgerBatch?.id}
+                      onEditMarketExpenses={() => setShowExpensesLabor(true)}
+                    />
                   )}
 
                   {/* Today's Cash & M-Pesa Drawer */}
-                  <FinancialSummaryCard 
+                  <FinancialSummaryCard
+                    selectedBatchId={ledgerBatch?.id}
                     onOpenReconciliation={() => setShowReconciliation(true)}
                     onOpenExpensesModal={() => setShowExpensesLabor(true)}
                     onOpenLaborModal={() => setShowExpensesLabor(true)}
                   />
 
-                  {/* NCC Cess & Expenses Breakdown */}
-                  {currentBatch && (
-                    <View style={[styles.ledgerExpensesCard, isDarkMode && styles.ledgerExpensesCardDark]}>
-                      <View style={styles.ledgerExpensesHeader}>
-                        <View style={styles.transTitleRow}>
-                          <Ionicons name="receipt" size={16} color="#D97706" />
-                          <Text style={[styles.ledgerExpensesTitle, isDarkMode && styles.textWhite]}>
-                            NCC CESS & BATCH OVERHEADS
-                          </Text>
-                        </View>
-                        <TouchableOpacity
-                          style={styles.addExpenseBtn}
-                          onPress={() => setShowExpensesLabor(true)}
-                          activeOpacity={0.8}
-                        >
-                          <Ionicons name="add" size={13} color="#FFFFFF" />
-                          <Text style={styles.addExpenseBtnText}>+ Expense</Text>
-                        </TouchableOpacity>
-                      </View>
-
-                      <View style={styles.cessBreakdownGrid}>
-                        <View style={[styles.cessBox, isDarkMode && styles.cessBoxDark]}>
-                          <Text style={styles.cessLabel}>DAY 1 NCC CESS</Text>
-                          <Text style={[styles.cessAmount, { color: '#0891B2' }]}>
-                            Ksh {currentBatch.nccCessPaid.toLocaleString()}
-                          </Text>
-                          <Text style={styles.cessSubtext}>
-                            {currentBatch.nccDeclaredNets} nets counted & covered
-                          </Text>
-                        </View>
-
-                        <View style={[styles.cessBox, isDarkMode && styles.cessBoxDark]}>
-                          <Text style={styles.cessLabel}>DAILY DEMURRAGE</Text>
-                          <Text style={[styles.cessAmount, { color: '#D97706' }]}>
-                            {currentBatch.dayNumber === 1
-                              ? 'Ksh 0 (Day 1)'
-                              : `Ksh ${((currentBatch.dayNumber - 1) * 1000).toLocaleString()}`}
-                          </Text>
-                          <Text style={styles.cessSubtext}>
-                            Day {currentBatch.dayNumber} of 4 • Flat Ksh 1,000/day
-                          </Text>
-                        </View>
-                      </View>
-
-                      {/* Expenses list summary */}
-                      {expenses.length > 0 && (
-                        <View style={styles.expenseItemsList}>
-                          {expenses.slice(0, 3).map((exp) => (
-                            <View
-                              key={exp.id}
-                              style={[styles.expenseItemRow, isDarkMode && styles.expenseItemRowDark]}
-                            >
-                              <View style={{ flex: 1 }}>
-                                <Text style={[styles.expenseDesc, isDarkMode && styles.textWhite]}>
-                                  {exp.description}
-                                </Text>
-                                <Text style={styles.expenseCat}>
-                                  {exp.category === 'CLEANER' || (exp.category as string) === 'SWEEPING_AND_SANITATION'
-                                    ? 'SWEEPING & SANITATION'
-                                    : exp.category === 'WATCHMAN'
-                                    ? 'SECURITY'
-                                    : exp.category} • {exp.date}
-                                </Text>
-                              </View>
-                              <View style={{ alignItems: 'flex-end' }}>
-                                <Text style={[styles.expenseAmt, { color: '#DC2626' }]}>
-                                  -Ksh {exp.amount.toLocaleString()}
-                                </Text>
-                                <Text style={styles.expenseMethod}>{exp.paidVia}</Text>
-                              </View>
-                            </View>
-                          ))}
-                        </View>
-                      )}
-                    </View>
+                  {/* Dispatch Report (below Today's Drawer after all figures are reviewed) */}
+                  {role === 'MERCHANT' && (
+                    <BatchDispatchReportCard
+                      isDarkMode={isDarkMode}
+                      selectedBatchId={ledgerBatch?.id}
+                    />
                   )}
                 </View>
               )}
@@ -822,25 +1378,6 @@ function MainScreen() {
               {/* SUB-VIEW 3: DAILY COB CLOSURES */}
               {ledgerSubTab === 'daily_closures' && (
                 <View>
-                  <View style={[styles.cobActionBanner, isDarkMode && styles.cobActionBannerDark]}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.cobActionTitle, isDarkMode && { color: '#FDE68A' }]}>
-                        14:00 COB RECONCILIATION & CLOSURE
-                      </Text>
-                      <Text style={[styles.cobActionSub, isDarkMode && { color: '#CFE9EC' }]}>
-                        Count physical stock, balance cash in hand, and transfer proceeds to Master account.
-                      </Text>
-                    </View>
-                    <TouchableOpacity
-                      style={styles.runCobBtn}
-                      onPress={() => setShowReconciliation(true)}
-                      activeOpacity={0.8}
-                    >
-                      <Ionicons name="scale" size={14} color="#FFFFFF" />
-                      <Text style={styles.runCobBtnText}>Run 14:00 Close</Text>
-                    </TouchableOpacity>
-                  </View>
-
                   <DailyClosureReceipt isDarkMode={isDarkMode} />
                 </View>
               )}
@@ -902,7 +1439,12 @@ function MainScreen() {
         {/* Floating Liquid Glass Bottom Navigation Dock */}
         <LiquidGlassBottomBar
           activeTab={activeNavTab}
-          onTabChange={setActiveNavTab}
+          onTabChange={(tab) => {
+            if (tab === 'sales' && role === 'MERCHANT') {
+              setHasSelectedSalesBatch(false);
+            }
+            setActiveNavTab(tab);
+          }}
           isDarkMode={isDarkMode}
           creditBadgeCount={pendingCreditRequests.length}
         />
@@ -926,6 +1468,7 @@ function MainScreen() {
         <ExpensesLaborModal
           visible={showExpensesLabor}
           onClose={() => setShowExpensesLabor(false)}
+          selectedBatchId={ledgerBatch?.id}
         />
 
         <SellerManagementModal
@@ -954,8 +1497,14 @@ function MainScreen() {
         {/* Batch Produce, Photos & Packaging Modal */}
         <BatchProduceModal
           visible={showBatchProduceModal}
+          initialMode={batchModalInitialMode}
+          batchId={selectedBatchId}
           onClose={() => setShowBatchProduceModal(false)}
           onSelectProductForSale={(prod) => {
+            if (prod.batchId) {
+              selectActiveBatch(prod.batchId);
+            }
+            setHasSelectedSalesBatch(true);
             setActiveNavTab('sales');
             setToastNotification({
               type: 'INFO',
@@ -964,6 +1513,14 @@ function MainScreen() {
             });
           }}
           isDarkMode={isDarkMode}
+        />
+
+        {/* Expandable Full-Screen Image Viewer */}
+        <ImageLightboxModal
+          visible={lightboxState.visible}
+          images={lightboxState.images}
+          initialIndex={lightboxState.initialIndex}
+          onClose={() => setLightboxState((prev) => ({ ...prev, visible: false }))}
         />
       </View>
     </View>
@@ -1316,9 +1873,35 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     flex: 1,
+    minWidth: 0,
   },
   transTextCol: {
     flex: 1,
+    minWidth: 0,
+  },
+  transCustomerBatchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    minWidth: 0,
+  },
+  transStockChip: {
+    backgroundColor: '#E0F2FE',
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    flexShrink: 1,
+    maxWidth: '48%',
+    minWidth: 0,
+  },
+  transStockChipDark: {
+    backgroundColor: 'rgba(14, 165, 233, 0.18)',
+  },
+  transStockChipText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#0369A1',
+    flexShrink: 1,
   },
   gradePill: {
     width: 32,
@@ -1339,9 +1922,11 @@ const styles = StyleSheet.create({
     fontSize: 11,
   },
   transBuyer: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '800',
     color: THEME.colors.textPrimary,
+    flexShrink: 1,
+    minWidth: 0,
   },
   transDetails: {
     fontSize: 11,
@@ -1587,32 +2172,230 @@ const styles = StyleSheet.create({
     fontSize: 9,
     fontWeight: '800',
   },
+  salesBatchPickerSection: {
+    paddingTop: 6,
+    paddingBottom: 12,
+  },
+  streamFilterToggleBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#0891B2',
+    backgroundColor: '#ECFEFF',
+  },
+  streamFilterToggleBtnDark: {
+    backgroundColor: '#1B4F55',
+    borderColor: '#7AB5BC',
+  },
+  streamFilterToggleBtnActive: {
+    backgroundColor: '#0891B2',
+    borderColor: '#0891B2',
+  },
+  streamFilterToggleText: {
+    fontSize: 10.5,
+    fontWeight: '800',
+    color: '#0891B2',
+  },
+  streamFilterPanel: {
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    padding: 10,
+    marginBottom: 10,
+    gap: 8,
+  },
+  streamFilterPanelDark: {
+    backgroundColor: '#1B4F55',
+    borderColor: '#7AB5BC',
+    borderWidth: 0.75,
+  },
+  streamFilterGroup: {
+    gap: 4,
+  },
+  streamFilterLabel: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#64748B',
+    letterSpacing: 0.5,
+  },
+  streamChipRow: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  streamChip: {
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: '#E2E8F0',
+  },
+  streamChipActive: {
+    backgroundColor: '#0891B2',
+  },
+  streamChipText: {
+    fontSize: 10.5,
+    fontWeight: '700',
+    color: '#334155',
+  },
+  streamChipTextActive: {
+    color: '#FFFFFF',
+  },
+  clearStreamFiltersBtn: {
+    alignSelf: 'flex-end',
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+  },
+  clearStreamFiltersText: {
+    fontSize: 10.5,
+    fontWeight: '800',
+    color: '#EF4444',
+  },
+  transMetaLine: {
+    fontSize: 10.5,
+    fontWeight: '600',
+    color: '#64748B',
+    marginTop: 1,
+  },
+  loadMoreStreamBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    paddingVertical: 9,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#BAE6FD',
+    backgroundColor: '#F0F9FF',
+    marginTop: 6,
+  },
+  loadMoreStreamBtnDark: {
+    backgroundColor: '#1B4F55',
+    borderColor: '#7AB5BC',
+    borderWidth: 0.75,
+  },
+  loadMoreStreamText: {
+    fontSize: 11.5,
+    fontWeight: '800',
+    color: '#0891B2',
+  },
+  salesBatchPickCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 10,
+    marginHorizontal: 14,
+    marginBottom: 12,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 5,
+    elevation: 2,
+  },
+  salesBatchPickCardDark: {
+    backgroundColor: '#256A71',
+    shadowColor: '#0D2C30',
+    shadowOpacity: 0.25,
+  },
+  switchBatchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#ECFEFF',
+    borderRadius: 10,
+    marginHorizontal: 14,
+    marginTop: 8,
+    marginBottom: 2,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    gap: 8,
+  },
+  switchBatchBarDark: {
+    backgroundColor: '#1B4F55',
+  },
+  switchBatchBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  switchBatchBtnText: {
+    fontSize: 11.5,
+    fontWeight: '800',
+    color: '#0891B2',
+  },
+  switchBatchActiveLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#334155',
+    flexShrink: 1,
+  },
   // Produce Origin Card (Produce Tab)
   produceOriginCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 16,
+    borderRadius: 12,
+    padding: 10,
     marginHorizontal: 14,
     marginBottom: 12,
-    borderWidth: 1.5,
-    borderColor: '#CCFBF1',
-    shadowColor: '#0891B2',
+    shadowColor: '#000000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
+    shadowOpacity: 0.05,
+    shadowRadius: 5,
     elevation: 2,
   },
   produceOriginCardDark: {
     backgroundColor: '#256A71',
-    borderColor: '#7AB5BC',
-    borderWidth: 0.75,
     shadowColor: '#0D2C30',
+    shadowOpacity: 0.25,
   },
   produceOriginHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    marginBottom: 8,
+  },
+  batchIdRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 5,
+  },
+  batchSourceTruckRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    marginBottom: 8,
+  },
+  batchTopMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
     marginBottom: 10,
+  },
+  batchTopOriginWrap: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  batchTruckWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    flexShrink: 0,
+  },
+  batchTopMetaText: {
+    fontSize: 12.5,
+    fontWeight: '800',
+    color: '#0F172A',
+    flexShrink: 1,
+  },
+  batchTopMetaTruck: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#475569',
   },
   produceOriginTitleRow: {
     flexDirection: 'row',
@@ -1627,11 +2410,12 @@ const styles = StyleSheet.create({
   },
   produceBatchBadge: {
     backgroundColor: '#F0FDFA',
-    borderWidth: 1,
-    borderColor: '#A5F3FC',
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 6,
+  },
+  produceBatchBadgeDark: {
+    backgroundColor: '#1B4F55',
   },
   produceBatchBadgeText: {
     fontSize: 11,
@@ -1651,6 +2435,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E2E8F0',
   },
+  produceOriginDetailItemDark: {
+    backgroundColor: '#1B4F55',
+    borderColor: 'rgba(122, 181, 188, 0.45)',
+    borderWidth: 0.75,
+  },
   produceOriginDetailLabel: {
     fontSize: 9,
     fontWeight: '800',
@@ -1669,51 +2458,82 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#F1F5F9',
   },
+  batchSingleImageWrapper: {
+    position: 'relative',
+    width: '100%',
+    height: 124,
+    borderRadius: 10,
+    overflow: 'hidden',
+    marginBottom: 8,
+  },
+  batchSingleImage: {
+    width: '100%',
+    height: '100%',
+  },
   batchThumbnailsRow: {
     flexDirection: 'row',
     marginBottom: 8,
   },
   batchThumbnailWrapper: {
     position: 'relative',
-    marginRight: 8,
+    width: 112,
+    height: 82,
+    borderRadius: 10,
+    overflow: 'hidden',
   },
   batchThumbnailImg: {
-    width: 68,
-    height: 52,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
+    width: '100%',
+    height: '100%',
   },
   batchThumbnailBadge: {
     position: 'absolute',
-    top: 3,
-    left: 3,
-    backgroundColor: 'rgba(8, 145, 178, 0.9)',
-    paddingHorizontal: 4,
-    paddingVertical: 1,
-    borderRadius: 3,
+    top: 6,
+    left: 6,
+    backgroundColor: 'rgba(15, 23, 42, 0.78)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 5,
   },
   batchThumbnailBadgeText: {
     color: '#FFFFFF',
-    fontSize: 8.5,
+    fontSize: 9,
     fontWeight: '800',
+    letterSpacing: 0.4,
   },
   batchSummaryBox: {
     backgroundColor: '#F8FAFC',
     borderRadius: 8,
-    padding: 8,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    marginBottom: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
   },
   batchSummaryBoxDark: {
     backgroundColor: '#1B4F55',
-    borderColor: 'rgba(122, 181, 188, 0.45)',
-    borderWidth: 0.75,
+  },
+  batchListRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 5,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+  },
+  batchListRowDark: {
+    borderBottomColor: 'rgba(122, 181, 188, 0.25)',
+  },
+  batchListLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#475569',
+  },
+  batchListValue: {
+    fontSize: 11.5,
+    fontWeight: '800',
+    color: '#0F172A',
   },
   batchSummaryRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    gap: 6,
   },
   summaryItem: {
     flex: 1,
@@ -1725,9 +2545,15 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   summaryValue: {
-    fontSize: 11,
+    fontSize: 10.5,
     fontWeight: '800',
     color: '#0F172A',
+  },
+  summarySubValue: {
+    fontSize: 9.5,
+    fontWeight: '700',
+    color: '#475569',
+    marginTop: 1,
   },
   viewProduceTriggerBar: {
     flexDirection: 'row',

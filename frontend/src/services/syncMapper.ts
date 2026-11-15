@@ -92,6 +92,7 @@ export interface BackendSyncPayload {
     sellerType: 'MASTER' | 'SELLER';
     sellerId: string;
     buyerId?: string | null;
+    buyerName?: string | null;
     grade: ProduceGrade;
     pricingMode: 'PER_NET' | 'BY_WEIGHT';
     quantityNominalGrams: number;
@@ -342,7 +343,7 @@ export function mapSyncPayloadToStore(payload: BackendSyncPayload) {
       negotiatedUnitPrice: Math.round(s.unitPricePerNetCents / 100),
       totalAmount: Math.round(s.totalAmountCents / 100),
       paymentMethod: s.paymentMode,
-      buyerName: buyer?.fullName,
+      buyerName: s.buyerName ?? buyer?.fullName,
       buyerPhone: buyer?.phoneE164,
       buyerNationalId: buyer?.nationalId,
       mpesaReceiptCode: pay?.mpesaReceipt ?? undefined,
@@ -408,8 +409,37 @@ export function mapSyncPayloadToStore(payload: BackendSyncPayload) {
     }
   }
 
-  const creditGroup = new Map<string, CustomerCredit>();
+  // Deduplicate credit entries (by saleId or identical buyer/batch/date/grade/quantity/amount/seller)
+  const dedupedCreditEntries = new Map<string, (typeof payload.creditEntries)[number]>();
   for (const ce of payload.creditEntries) {
+    const key = ce.saleId
+      ? `sale:${ce.saleId}`
+      : [
+          ce.buyerId,
+          ce.batchId,
+          ce.createdAt.slice(0, 10),
+          ce.grade,
+          ce.quantityNominalGrams,
+          ce.totalOwedCents,
+          ce.sellerId,
+        ].join('::');
+
+    const existing = dedupedCreditEntries.get(key);
+    if (!existing) {
+      dedupedCreditEntries.set(key, ce);
+    } else {
+      const existingReps = repaymentsByCredit.get(existing.id)?.length ?? 0;
+      const nextReps = repaymentsByCredit.get(ce.id)?.length ?? 0;
+      const existingApproved = existing.approvalStatus === 'APPROVED' ? 1 : 0;
+      const nextApproved = ce.approvalStatus === 'APPROVED' ? 1 : 0;
+      if (nextReps > existingReps || (nextReps === existingReps && nextApproved > existingApproved)) {
+        dedupedCreditEntries.set(key, ce);
+      }
+    }
+  }
+
+  const creditGroup = new Map<string, CustomerCredit>();
+  for (const ce of dedupedCreditEntries.values()) {
     const buyer = buyerMap.get(ce.buyerId);
     if (!buyer) continue;
     const reps = repaymentsByCredit.get(ce.id) ?? [];
@@ -468,7 +498,7 @@ export function mapSyncPayloadToStore(payload: BackendSyncPayload) {
       minPrice: Math.round(p.minPriceCents / 100),
       availableBags: b ? (p.grade === 'GRADE_1' ? b.remainingGrade1Nets : b.remainingGrade2Nets) : 0,
       origin: b?.origin.regionName ?? 'Market Stock',
-      photoUrl: p.photoUrl ?? '',
+      photoUrl: p.photoUrl || p.photoUrls?.[0] || '',
       photoUrls: p.photoUrls ?? [],
       description: p.description ?? undefined,
       tags: p.tags ?? [],

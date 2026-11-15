@@ -1,5 +1,5 @@
 import { FastifyInstance } from 'fastify';
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import {
   buyers,
@@ -65,6 +65,7 @@ export async function registerSalesRoutes(app: FastifyInstance, deps: AppRouteDe
         paymentMode: z.enum(['CASH', 'MPESA', 'CREDIT']),
         mpesaReceipt: z.string().min(4).optional(),
         payerPhoneE164: z.string().optional(),
+        buyerName: z.string().optional(),
         buyer: z
           .object({
             fullName: z.string().min(1),
@@ -94,10 +95,10 @@ export async function registerSalesRoutes(app: FastifyInstance, deps: AppRouteDe
       });
     }
     if (data.paymentMode === 'MPESA') {
-      if (!data.mpesaReceipt || !/^[A-Z0-9]{10}$/.test(data.mpesaReceipt) || !data.payerPhoneE164) {
+      if (!data.mpesaReceipt || !/^[A-Z0-9]{10}$/.test(data.mpesaReceipt)) {
         return reply.code(400).send({
           error: 'INVALID_MPESA_DETAILS',
-          message: 'M-Pesa payment requires a 10-character uppercase alphanumeric receipt and payerPhoneE164',
+          message: 'M-Pesa payment requires a valid 10-character uppercase alphanumeric M-Pesa confirmation code',
         });
       }
     }
@@ -274,6 +275,93 @@ export async function registerSalesRoutes(app: FastifyInstance, deps: AppRouteDe
             buyerId = b.id;
           }
 
+          // Credit anti-double-entry & existing unpaid credit gate
+          if (data.paymentMode === 'CREDIT') {
+            const candidateBuyerIds = new Set<string>();
+            if (buyerId) candidateBuyerIds.add(buyerId);
+            if (data.buyer?.nationalId) {
+              const matchingBuyers = await tx
+                .select({ id: buyers.id })
+                .from(buyers)
+                .where(
+                  and(
+                    eq(buyers.masterId, auth.masterId),
+                    eq(buyers.nationalId, data.buyer.nationalId)
+                  )
+                );
+              for (const mb of matchingBuyers) candidateBuyerIds.add(mb.id);
+            }
+
+            if (candidateBuyerIds.size > 0) {
+              const buyerIdList = Array.from(candidateBuyerIds);
+              const existingCredits = await tx
+                .select({
+                  id: creditEntries.id,
+                  batchId: creditEntries.batchId,
+                  totalOwedCents: creditEntries.totalOwedCents,
+                  approvalStatus: creditEntries.approvalStatus,
+                  createdAt: creditEntries.createdAt,
+                })
+                .from(creditEntries)
+                .where(
+                  and(
+                    eq(creditEntries.masterId, auth.masterId),
+                    inArray(creditEntries.buyerId, buyerIdList)
+                  )
+                );
+
+              const tenSecAgo = Date.now() - 15_000;
+              const duplicateEntry = existingCredits.find(
+                (ce) =>
+                  ce.batchId === data.batchId &&
+                  ce.totalOwedCents === totalAmountCents &&
+                  ce.createdAt &&
+                  new Date(ce.createdAt).getTime() >= tenSecAgo
+              );
+              if (duplicateEntry) {
+                throw Object.assign(
+                  new Error('Duplicate credit entry detected. This credit has already been recorded.'),
+                  { statusCode: 409, code: 'DUPLICATE_CREDIT_ENTRY' }
+                );
+              }
+
+              if (existingCredits.length > 0) {
+                const creditIds = existingCredits.map((ce) => ce.id);
+                const paymentRows = await tx
+                  .select({
+                    creditEntryId: payments.creditEntryId,
+                    amountCents: payments.amountCents,
+                  })
+                  .from(payments)
+                  .where(inArray(payments.creditEntryId, creditIds));
+
+                const paidByCreditId = new Map<string, number>();
+                for (const p of paymentRows) {
+                  if (!p.creditEntryId) continue;
+                  paidByCreditId.set(
+                    p.creditEntryId,
+                    (paidByCreditId.get(p.creditEntryId) ?? 0) + p.amountCents
+                  );
+                }
+
+                for (const ce of existingCredits) {
+                  if (ce.approvalStatus === 'REJECTED') continue;
+                  const paidCents = paidByCreditId.get(ce.id) ?? 0;
+                  const balanceCents = ce.totalOwedCents - paidCents;
+                  if (balanceCents > 0) {
+                    const unpaidKsh = Math.round(balanceCents / 100);
+                    throw Object.assign(
+                      new Error(
+                        `Customer has an existing unpaid credit of Ksh ${unpaidKsh.toLocaleString()}. They must pay first before being allowed another credit.`
+                      ),
+                      { statusCode: 409, code: 'EXISTING_UNPAID_CREDIT' }
+                    );
+                  }
+                }
+              }
+            }
+          }
+
           // Credit approval evaluation
           let creditApprovalStatus: 'APPROVED' | 'PENDING' = 'APPROVED';
           let needsCreditApproval = false;
@@ -315,6 +403,7 @@ export async function registerSalesRoutes(app: FastifyInstance, deps: AppRouteDe
               sellerType: auth.actorType,
               sellerId: auth.userId,
               buyerId,
+              buyerName: data.buyerName?.trim() || data.buyer?.fullName?.trim() || null,
               grade: data.grade,
               pricingMode: data.pricingMode,
               quantityNominalGrams: data.quantityNominalGrams,

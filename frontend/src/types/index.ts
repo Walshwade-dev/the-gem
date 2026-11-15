@@ -206,6 +206,7 @@ export interface SaleTransaction {
   id: string;
   batchId: string;
   sellerId: string;            // Either Merchant or Hired Seller
+  sellerName?: string;         // Display name of salesperson who recorded the sale
   timestamp: string;
   grade: ProduceGrade;
   quantityNets: number;

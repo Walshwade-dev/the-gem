@@ -3,38 +3,75 @@
 // Wakulima Market Fixed Overheads (Ksh 200) + Individually Negotiated Casual Labor
 // ============================================================================
 
-import React, { useState } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  Modal, 
-  TouchableOpacity, 
-  FlatList, 
-  TextInput, 
-  ScrollView, 
-  Alert 
+import React, { useState, useRef, useEffect } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  Modal,
+  TouchableOpacity as RNTouchableOpacity,
+  TextInput,
+  ScrollView,
+  Alert,
+  Platform,
+  Animated,
+  Easing,
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { THEME } from '../constants/theme';
 import { useAppStore } from '../store/useAppStore';
 import { CasualLaborer, DailyExpense } from '../types';
 
+const TouchableOpacity: React.FC<React.ComponentProps<typeof RNTouchableOpacity>> = ({
+  style,
+  ...props
+}) => (
+  <RNTouchableOpacity
+    {...props}
+    style={[Platform.OS === 'web' && ({ cursor: 'pointer' } as any), style]}
+  />
+);
+
 interface ExpensesLaborModalProps {
   visible: boolean;
   onClose: () => void;
+  selectedBatchId?: string;
 }
 
-export const ExpensesLaborModal: React.FC<ExpensesLaborModalProps> = ({ visible, onClose }) => {
-  const { 
-    expenses, 
-    casualLaborers, 
-    addCasualLaborer, 
-    addDailyExpense, 
-    markLaborerPaid 
+export const ExpensesLaborModal: React.FC<ExpensesLaborModalProps> = ({
+  visible,
+  onClose,
+  selectedBatchId,
+}) => {
+  const {
+    currentBatch,
+    expenses,
+    casualLaborers,
+    addCasualLaborer,
+    addDailyExpense,
+    isDarkMode,
   } = useAppStore();
 
+  const targetBatchId = selectedBatchId || currentBatch?.id || '';
+  const batchLaborers = targetBatchId
+    ? casualLaborers.filter((l) => l.batchId === targetBatchId)
+    : casualLaborers;
+  const batchExpenses = targetBatchId
+    ? expenses.filter((e) => e.batchId === targetBatchId)
+    : expenses;
+
   const [activeTab, setActiveTab] = useState<'LABOR' | 'EXPENSES'>('LABOR');
+  const [switchWidth, setSwitchWidth] = useState<number>(0);
+  const switchAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(switchAnim, {
+      toValue: activeTab === 'LABOR' ? 0 : 1,
+      duration: 220,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [activeTab, switchAnim]);
 
   // New Labor Form State
   const [workerName, setWorkerName] = useState<string>('');
@@ -60,6 +97,7 @@ export const ExpensesLaborModal: React.FC<ExpensesLaborModalProps> = ({ visible,
     }
 
     addCasualLaborer({
+      batchId: targetBatchId || undefined,
       workerName: workerName.trim(),
       task: workerTask,
       agreedWage: wage,
@@ -79,6 +117,7 @@ export const ExpensesLaborModal: React.FC<ExpensesLaborModalProps> = ({ visible,
     }
 
     addDailyExpense({
+      batchId: targetBatchId || undefined,
       category: expCategory,
       description: expDesc.trim(),
       amount,
@@ -90,66 +129,149 @@ export const ExpensesLaborModal: React.FC<ExpensesLaborModalProps> = ({ visible,
     setExpAmount('');
   };
 
+  const isNccExp = (e: DailyExpense) => {
+    const desc = e.description.toLowerCase();
+    return (
+      (e.category as string) === 'NCC_CESS' ||
+      e.category === 'DEMURRAGE' ||
+      (e.category as string) === 'COUNTY_CESS' ||
+      desc.includes('ncc') ||
+      desc.includes('cess') ||
+      desc.includes('demurrage')
+    );
+  };
+  const isSecurityExp = (e: DailyExpense) => {
+    const desc = e.description.toLowerCase();
+    return e.category === 'WATCHMAN' || desc.includes('watchman') || desc.includes('security');
+  };
+  const isSweeperExp = (e: DailyExpense) => {
+    const desc = e.description.toLowerCase();
+    return (
+      e.category === 'CLEANER' ||
+      (e.category as string) === 'SWEEPING_AND_SANITATION' ||
+      desc.includes('clean') ||
+      desc.includes('sweep') ||
+      desc.includes('sanitation')
+    );
+  };
+
+  const securityExpensesList = batchExpenses.filter((e) => !isNccExp(e) && isSecurityExp(e));
+  const sweeperExpensesList = batchExpenses.filter((e) => !isNccExp(e) && !isSecurityExp(e) && isSweeperExp(e));
+  const nccExpensesList = batchExpenses.filter(isNccExp);
+  const otherExpensesList = batchExpenses.filter((e) => !isNccExp(e) && !isSecurityExp(e) && !isSweeperExp(e));
+
+  const expenseGroups = [
+    { key: 'SECURITY', label: 'Security Watchman', items: securityExpensesList },
+    { key: 'SWEEPER', label: 'Sweeping & Sanitation (Sweeper)', items: sweeperExpensesList },
+    { key: 'NCC', label: 'NCC Daily Expense', items: nccExpensesList },
+    { key: 'OTHER', label: 'Other Expenses', items: otherExpensesList },
+  ];
+
+  const expenseCategoryOptions: { label: string; value: DailyExpense['category'] }[] = [
+    { label: 'Security', value: 'WATCHMAN' },
+    { label: 'Sweeper', value: 'CLEANER' },
+    { label: 'NCC Daily', value: 'NCC_CESS' },
+    { label: 'Other', value: 'OTHER' },
+  ];
+
   return (
-    <Modal visible={visible} animationType="slide" transparent>
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.overlay}>
-        <View style={styles.modalCard}>
+        <View style={[styles.modalCard, isDarkMode && styles.modalCardDark]}>
           {/* Mobile Bottom-Sheet Drag Handle */}
           <View style={styles.dragHandleContainer}>
-            <View style={styles.dragHandle} />
+            <View style={[styles.dragHandle, isDarkMode && { backgroundColor: '#7AB5BC' }]} />
           </View>
 
           {/* Header */}
-          <View style={styles.header}>
+          <View style={[styles.header, isDarkMode && styles.headerDark]}>
             <View style={styles.titleRow}>
-              <MaterialCommunityIcons name="account-hard-hat" size={24} color="#0891B2" />
-              <View>
-                <Text style={styles.title}>EXPENSES & CASUAL LABOR (VIBARUA)</Text>
-                <Text style={styles.subtitle}>Mandatory Overheads & Individual Negotiated Pay</Text>
-              </View>
+              <Text style={[styles.title, isDarkMode && { color: '#F0FDFA' }]}>
+                Expenses and Labour
+              </Text>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-              <Ionicons name="close" size={20} color={THEME.colors.textSecondary} />
-            </TouchableOpacity>
-          </View>
-
-          {/* Tab Selector */}
-          <View style={styles.tabBar}>
-            <TouchableOpacity 
-              style={[styles.tabBtn, activeTab === 'LABOR' && styles.tabBtnActive]}
-              onPress={() => setActiveTab('LABOR')}
-            >
-              <Text style={[styles.tabBtnText, activeTab === 'LABOR' && styles.tabBtnTextActive]}>
-                Casual Labor ({casualLaborers.length} Vibarua)
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity 
-              style={[styles.tabBtn, activeTab === 'EXPENSES' && styles.tabBtnActive]}
-              onPress={() => setActiveTab('EXPENSES')}
-            >
-              <Text style={[styles.tabBtnText, activeTab === 'EXPENSES' && styles.tabBtnTextActive]}>
-                Daily Expenses ({expenses.length})
-              </Text>
+              <Ionicons name="close" size={20} color={isDarkMode ? '#CFE9EC' : THEME.colors.textSecondary} />
             </TouchableOpacity>
           </View>
 
           <ScrollView style={styles.body} showsVerticalScrollIndicator={false}>
+            {/* Segmented Switch (mimicking Login role switch with smooth sliding pill) */}
+            <View
+              style={[styles.switchTrack, isDarkMode && styles.switchTrackDark]}
+              onLayout={(e) => setSwitchWidth(e.nativeEvent.layout.width)}
+            >
+              {switchWidth > 0 && (
+                <Animated.View
+                  pointerEvents="none"
+                  style={[
+                    styles.switchActivePill,
+                    {
+                      width: (switchWidth - 10) / 2,
+                      backgroundColor: activeTab === 'LABOR' ? '#0891B2' : '#059669',
+                      transform: [
+                        {
+                          translateX: switchAnim.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [0, (switchWidth - 10) / 2 + 4],
+                          }),
+                        },
+                      ],
+                    },
+                  ]}
+                />
+              )}
+              <TouchableOpacity
+                style={styles.switchBtn}
+                onPress={() => setActiveTab('LABOR')}
+                activeOpacity={0.8}
+              >
+                <Text
+                  style={[
+                    styles.switchBtnText,
+                    isDarkMode && { color: '#CFE9EC' },
+                    activeTab === 'LABOR' && styles.textWhite,
+                  ]}
+                >
+                  Casual Labour ({batchLaborers.length})
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.switchBtn}
+                onPress={() => setActiveTab('EXPENSES')}
+                activeOpacity={0.8}
+              >
+                <Text
+                  style={[
+                    styles.switchBtnText,
+                    isDarkMode && { color: '#CFE9EC' },
+                    activeTab === 'EXPENSES' && styles.textWhite,
+                  ]}
+                >
+                  Daily Expenses ({batchExpenses.length})
+                </Text>
+              </TouchableOpacity>
+            </View>
             {activeTab === 'LABOR' ? (
               <View>
                 {/* Add Labor Form */}
-                <View style={styles.formBox}>
-                  <Text style={styles.formTitle}>REGISTER CASUAL WORKER (VIBARUA)</Text>
+                <View style={[styles.formBox, isDarkMode && styles.formBoxDark]}>
+                  <Text style={[styles.formTitle, isDarkMode && { color: '#7DD3FC' }]}>
+                    REGISTER CASUAL WORKER
+                  </Text>
                   <View style={styles.inputRow}>
                     <TextInput
-                      style={[styles.textInput, { flex: 2 }]}
+                      style={[styles.textInput, isDarkMode && styles.textInputDark, { flex: 2 }]}
                       placeholder="Worker Name (e.g. Otieno)"
+                      placeholderTextColor={isDarkMode ? '#B4D6D9' : '#94A3B8'}
                       value={workerName}
                       onChangeText={setWorkerName}
                     />
                     <TextInput
-                      style={[styles.textInput, { flex: 1 }]}
+                      style={[styles.textInput, isDarkMode && styles.textInputDark, { flex: 1 }]}
                       placeholder="Wage Ksh"
+                      placeholderTextColor={isDarkMode ? '#B4D6D9' : '#94A3B8'}
                       keyboardType="decimal-pad"
                       value={workerWage}
                       onChangeText={setWorkerWage}
@@ -158,101 +280,186 @@ export const ExpensesLaborModal: React.FC<ExpensesLaborModalProps> = ({ visible,
 
                   {/* Task Selector */}
                   <View style={styles.taskChips}>
-                    {(['OFFLOAD', 'SORTING', 'GUARD', 'SELLING_HELP'] as const).map(task => (
+                    {(['OFFLOAD', 'SORTING', 'GUARD', 'SELLING_HELP'] as const).map((task) => (
                       <TouchableOpacity
                         key={task}
-                        style={[styles.taskChip, workerTask === task && styles.taskChipActive]}
+                        style={[
+                          styles.taskChip,
+                          isDarkMode && styles.taskChipDark,
+                          workerTask === task && (isDarkMode ? styles.taskChipActiveDark : styles.taskChipActive),
+                        ]}
                         onPress={() => setWorkerTask(task)}
                       >
-                        <Text style={[styles.taskChipText, workerTask === task && styles.textWhite]}>
+                        <Text
+                          style={[
+                            styles.taskChipText,
+                            isDarkMode && { color: '#E2F5F7' },
+                            workerTask === task && styles.textWhite,
+                          ]}
+                        >
                           {task}
                         </Text>
                       </TouchableOpacity>
                     ))}
                   </View>
 
-                  <TouchableOpacity style={styles.addBtn} onPress={handleAddWorker}>
+                  <TouchableOpacity
+                    style={[styles.addBtn, isDarkMode && { backgroundColor: '#059669' }]}
+                    onPress={handleAddWorker}
+                  >
                     <Ionicons name="add" size={18} color="#FFFFFF" />
                     <Text style={styles.addBtnText}>ADD WORKER & PAY</Text>
                   </TouchableOpacity>
                 </View>
 
                 {/* Worker List */}
-                <Text style={styles.listHeader}>ACTIVE MARKET WORKERS</Text>
-                {casualLaborers.map(worker => (
-                  <View key={worker.id} style={styles.itemCard}>
-                    <View>
-                      <Text style={styles.itemName}>{worker.workerName}</Text>
-                      <Text style={styles.itemTask}>Task: {worker.task}</Text>
-                    </View>
-                    <View style={styles.wageRow}>
-                      <Text style={styles.wageText}>Ksh {worker.agreedWage}</Text>
-                      <View style={[styles.paidTag, worker.isPaid ? styles.paidTagYes : styles.paidTagNo]}>
-                        <Text style={styles.paidTagText}>
-                          {worker.isPaid ? `PAID (${worker.paidVia})` : 'UNPAID'}
+                <Text style={[styles.listHeader, isDarkMode && { color: '#CFE9EC' }]}>
+                  ACTIVE MARKET WORKERS
+                </Text>
+                {batchLaborers.length === 0 ? (
+                  <Text style={[styles.emptyGroupText, isDarkMode && { color: '#B4D6D9' }]}>
+                    No casual workers recorded for this batch.
+                  </Text>
+                ) : (
+                  batchLaborers.map((worker) => (
+                    <View key={worker.id} style={[styles.itemCard, isDarkMode && styles.itemCardDark]}>
+                      <View>
+                        <Text style={[styles.itemName, isDarkMode && { color: '#F0FDFA' }]}>
+                          {worker.workerName}
+                        </Text>
+                        <Text style={[styles.itemTask, isDarkMode && { color: '#B4D6D9' }]}>
+                          Task: {worker.task}
                         </Text>
                       </View>
+                      <View style={styles.wageRow}>
+                        <Text style={[styles.wageText, isDarkMode && { color: '#6EE7B7' }]}>
+                          Ksh {worker.agreedWage.toLocaleString()}
+                        </Text>
+                        <View style={[styles.paidTag, worker.isPaid ? styles.paidTagYes : styles.paidTagNo]}>
+                          <Text style={styles.paidTagText}>
+                            {worker.isPaid ? `PAID (${worker.paidVia})` : 'UNPAID'}
+                          </Text>
+                        </View>
+                      </View>
                     </View>
-                  </View>
-                ))}
+                  ))
+                )}
               </View>
             ) : (
               <View>
-                {/* Fixed Fees Reminder */}
-                <View style={styles.fixedFeeBanner}>
-                  <Ionicons name="information-circle" size={18} color="#92400E" />
-                  <Text style={styles.fixedFeeText}>
-                    Mandatory Daily Fixed Overheads: Security Watchman (Ksh 100) + Sweeping & Sanitation (Ksh 100) = Ksh 200 auto-recorded daily.
-                  </Text>
-                </View>
-
                 {/* Add Expense Form */}
-                <View style={styles.formBox}>
-                  <Text style={styles.formTitle}>ADD OPERATIONAL EXPENSE</Text>
+                <View style={[styles.formBox, isDarkMode && styles.formBoxDark]}>
+                  <Text style={[styles.formTitle, isDarkMode && { color: '#7DD3FC' }]}>
+                    ADD MARKET EXPENSE
+                  </Text>
+
+                  {/* Category Selector */}
+                  <View style={styles.taskChips}>
+                    {expenseCategoryOptions.map((opt) => (
+                      <TouchableOpacity
+                        key={opt.value}
+                        style={[
+                          styles.taskChip,
+                          isDarkMode && styles.taskChipDark,
+                          expCategory === opt.value && (isDarkMode ? styles.taskChipActiveDark : styles.taskChipActive),
+                        ]}
+                        onPress={() => setExpCategory(opt.value)}
+                      >
+                        <Text
+                          style={[
+                            styles.taskChipText,
+                            isDarkMode && { color: '#E2F5F7' },
+                            expCategory === opt.value && styles.textWhite,
+                          ]}
+                        >
+                          {opt.label}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+
                   <TextInput
-                    style={[styles.textInput, { marginBottom: 8 }]}
-                    placeholder="Description (e.g. Sweeping and sanitation, Stall repair, Transport)"
+                    style={[styles.textInput, isDarkMode && styles.textInputDark, { marginBottom: 8 }]}
+                    placeholder="Description (e.g. Night watchman, Sweeper, NCC fee)"
+                    placeholderTextColor={isDarkMode ? '#B4D6D9' : '#94A3B8'}
                     value={expDesc}
                     onChangeText={setExpDesc}
                   />
                   <View style={styles.inputRow}>
                     <TextInput
-                      style={[styles.textInput, { flex: 1 }]}
+                      style={[styles.textInput, isDarkMode && styles.textInputDark, { flex: 1 }]}
                       placeholder="Amount Ksh"
+                      placeholderTextColor={isDarkMode ? '#B4D6D9' : '#94A3B8'}
                       keyboardType="decimal-pad"
                       value={expAmount}
                       onChangeText={setExpAmount}
                     />
-                    <TouchableOpacity 
+                    <TouchableOpacity
                       style={[styles.payModeToggle, expPaidVia === 'CASH' ? styles.payModeCash : styles.payModeMpesa]}
-                      onPress={() => setExpPaidVia(prev => prev === 'CASH' ? 'MPESA' : 'CASH')}
+                      onPress={() => setExpPaidVia((prev) => (prev === 'CASH' ? 'MPESA' : 'CASH'))}
                     >
                       <Text style={styles.textWhite}>{expPaidVia}</Text>
                     </TouchableOpacity>
                   </View>
 
-                  <TouchableOpacity style={styles.addBtn} onPress={handleAddExpense}>
+                  <TouchableOpacity
+                    style={[styles.addBtn, isDarkMode && { backgroundColor: '#059669' }]}
+                    onPress={handleAddExpense}
+                  >
                     <Ionicons name="add" size={18} color="#FFFFFF" />
                     <Text style={styles.addBtnText}>RECORD EXPENSE</Text>
                   </TouchableOpacity>
                 </View>
 
-                {/* Expense List */}
-                <Text style={styles.listHeader}>RECORDED EXPENSES TODAY</Text>
-                {expenses.map(exp => (
-                  <View key={exp.id} style={styles.itemCard}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.itemName}>{exp.description}</Text>
-                      <Text style={styles.itemTask}>Category: {exp.category}</Text>
-                    </View>
-                    <View style={styles.wageRow}>
-                      <Text style={styles.expenseAmountText}>-Ksh {exp.amount}</Text>
-                      <View style={styles.paidMethodBadge}>
-                        <Text style={styles.paidMethodText}>{exp.paidVia}</Text>
+                {/* Recorded Expenses Separated by Type */}
+                <Text style={[styles.listHeader, isDarkMode && { color: '#CFE9EC' }]}>
+                  RECORDED EXPENSES
+                </Text>
+
+                {expenseGroups.map((group) => {
+                  const groupTotal = group.items.reduce((sum, item) => sum + item.amount, 0);
+                  return (
+                    <View key={group.key} style={[styles.expenseGroupSection, isDarkMode && styles.expenseGroupSectionDark]}>
+                      <View style={styles.expenseGroupHeader}>
+                        <Text style={[styles.expenseGroupTitle, isDarkMode && { color: '#7DD3FC' }]}>
+                          {group.label}
+                        </Text>
+                        <Text style={[styles.expenseGroupTotal, isDarkMode && { color: '#F0FDFA' }]}>
+                          Ksh {groupTotal.toLocaleString()}
+                        </Text>
                       </View>
+
+                      {group.items.length === 0 ? (
+                        <Text style={[styles.emptyGroupText, isDarkMode && { color: '#B4D6D9' }]}>
+                          No {group.label.toLowerCase()} recorded yet.
+                        </Text>
+                      ) : (
+                        group.items.map((exp) => (
+                          <View key={exp.id} style={[styles.itemCard, isDarkMode && styles.itemCardDark]}>
+                            <View style={{ flex: 1 }}>
+                              <Text style={[styles.itemName, isDarkMode && { color: '#F0FDFA' }]}>
+                                {exp.description}
+                              </Text>
+                              <Text style={[styles.itemTask, isDarkMode && { color: '#B4D6D9' }]}>
+                                {exp.date}
+                              </Text>
+                            </View>
+                            <View style={styles.wageRow}>
+                              <Text style={[styles.expenseAmountText, isDarkMode && { color: '#FCA5A5' }]}>
+                                -Ksh {exp.amount.toLocaleString()}
+                              </Text>
+                              <View style={[styles.paidMethodBadge, isDarkMode && { backgroundColor: '#256A71' }]}>
+                                <Text style={[styles.paidMethodText, isDarkMode && { color: '#CFE9EC' }]}>
+                                  {exp.paidVia}
+                                </Text>
+                              </View>
+                            </View>
+                          </View>
+                        ))
+                      )}
                     </View>
-                  </View>
-                ))}
+                  );
+                })}
               </View>
             )}
           </ScrollView>
@@ -278,6 +485,9 @@ const styles = StyleSheet.create({
     height: '88%',
     paddingBottom: 24,
   },
+  modalCardDark: {
+    backgroundColor: '#256A71',
+  },
   dragHandleContainer: {
     alignItems: 'center',
     paddingTop: 10,
@@ -298,6 +508,9 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#F1F5F9',
   },
+  headerDark: {
+    borderBottomColor: 'rgba(122, 181, 188, 0.25)',
+  },
   titleRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -315,30 +528,39 @@ const styles = StyleSheet.create({
   closeBtn: {
     padding: 6,
   },
-  tabBar: {
+  switchTrack: {
     flexDirection: 'row',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E2E8F0',
-    backgroundColor: '#F8FAFC',
+    position: 'relative',
+    backgroundColor: '#F1F5F9',
+    borderRadius: 10,
+    padding: 3,
+    gap: 4,
+    marginBottom: 14,
   },
-  tabBtn: {
+  switchTrackDark: {
+    backgroundColor: '#1B4F55',
+  },
+  switchActivePill: {
+    position: 'absolute',
+    top: 3,
+    bottom: 3,
+    left: 3,
+    borderRadius: 8,
+  },
+  switchBtn: {
     flex: 1,
-    paddingVertical: 12,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 8,
+    borderRadius: 8,
+    zIndex: 1,
   },
-  tabBtnActive: {
-    borderBottomWidth: 2.5,
-    borderBottomColor: '#0891B2',
-    backgroundColor: '#FFFFFF',
-  },
-  tabBtnText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: THEME.colors.textSecondary,
-  },
-  tabBtnTextActive: {
-    color: '#0891B2',
+  switchBtnText: {
+    fontSize: 11.5,
     fontWeight: '800',
+    color: THEME.colors.textSecondary,
   },
   body: {
     padding: 16,
@@ -347,14 +569,22 @@ const styles = StyleSheet.create({
     backgroundColor: '#F8FAFC',
     padding: 14,
     borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
     marginBottom: 16,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  formBoxDark: {
+    backgroundColor: '#1D575D',
+    shadowColor: '#0D2C30',
+    shadowOpacity: 0.22,
   },
   formTitle: {
     fontSize: 11,
     fontWeight: '800',
-    color: THEME.colors.primary,
+    color: '#0891B2',
     marginBottom: 10,
   },
   inputRow: {
@@ -372,6 +602,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: THEME.colors.textPrimary,
   },
+  textInputDark: {
+    backgroundColor: '#1B4F55',
+    borderColor: '#7AB5BC',
+    color: '#F0FDFA',
+  },
   taskChips: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -380,12 +615,21 @@ const styles = StyleSheet.create({
   },
   taskChip: {
     backgroundColor: '#E2E8F0',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
     borderRadius: 6,
   },
+  taskChipDark: {
+    backgroundColor: '#1B4F55',
+    borderWidth: 1,
+    borderColor: '#7AB5BC',
+  },
   taskChipActive: {
-    backgroundColor: THEME.colors.primary,
+    backgroundColor: '#0891B2',
+  },
+  taskChipActiveDark: {
+    backgroundColor: '#0891B2',
+    borderColor: '#7DD3FC',
   },
   taskChipText: {
     fontSize: 10,
@@ -422,11 +666,49 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
     borderRadius: 8,
     padding: 12,
     marginBottom: 8,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    elevation: 1,
+  },
+  itemCardDark: {
+    backgroundColor: '#1B4F55',
+    shadowColor: '#0D2C30',
+    shadowOpacity: 0.2,
+  },
+  expenseGroupSection: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 10,
+  },
+  expenseGroupSectionDark: {
+    backgroundColor: '#1D575D',
+  },
+  expenseGroupHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  expenseGroupTitle: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#0891B2',
+  },
+  expenseGroupTotal: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  emptyGroupText: {
+    fontSize: 11,
+    color: '#64748B',
+    fontStyle: 'italic',
   },
   itemName: {
     fontSize: 13,

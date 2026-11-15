@@ -4,20 +4,20 @@
 // ============================================================================
 
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { View, Text, StyleSheet, TouchableOpacity, Platform } from 'react-native';
 import { THEME } from '../constants/theme';
 import { useShallow } from 'zustand/react/shallow';
 import { useAppStore } from '../store/useAppStore';
 
 interface FinancialSummaryCardProps {
-  onOpenReconciliation: () => void;
+  selectedBatchId?: string;
+  onOpenReconciliation?: () => void;
   onOpenExpensesModal: () => void;
   onOpenLaborModal: () => void;
 }
 
 export const FinancialSummaryCard: React.FC<FinancialSummaryCardProps> = ({
-  onOpenReconciliation,
+  selectedBatchId,
   onOpenExpensesModal,
   onOpenLaborModal
 }) => {
@@ -26,7 +26,6 @@ export const FinancialSummaryCard: React.FC<FinancialSummaryCardProps> = ({
     expenses, 
     casualLaborers, 
     creditRepayments, 
-    role,
     isDarkMode 
   } = useAppStore(
     useShallow((s) => ({
@@ -34,16 +33,23 @@ export const FinancialSummaryCard: React.FC<FinancialSummaryCardProps> = ({
       expenses: s.expenses,
       casualLaborers: s.casualLaborers,
       creditRepayments: s.creditRepayments,
-      role: s.role,
       isDarkMode: s.isDarkMode,
     }))
   );
 
   const todayStr = new Date().toISOString().split('T')[0];
-  const todaySales = sales.filter(s => s.timestamp.startsWith(todayStr));
-  const todayExpenses = expenses.filter(e => e.date === todayStr);
-  const todayLabor = casualLaborers.filter(l => l.date === todayStr);
-  const todayRepayments = creditRepayments.filter(r => r.timestamp.startsWith(todayStr));
+  const todaySales = sales.filter(
+    s => s.timestamp.startsWith(todayStr) && (!selectedBatchId || s.batchId === selectedBatchId)
+  );
+  const todayExpenses = expenses.filter(
+    e => e.date === todayStr && (!selectedBatchId || e.batchId === selectedBatchId)
+  );
+  const todayLabor = casualLaborers.filter(
+    l => l.date === todayStr && (!selectedBatchId || l.batchId === selectedBatchId)
+  );
+  const todayRepayments = creditRepayments.filter(
+    r => r.timestamp.startsWith(todayStr) && (!selectedBatchId || r.batchId === selectedBatchId)
+  );
 
   // Cash calculations
   const cashSales = todaySales
@@ -91,118 +97,89 @@ export const FinancialSummaryCard: React.FC<FinancialSummaryCardProps> = ({
   return (
     <View style={[styles.card, isDarkMode && styles.cardDark]}>
       <View style={styles.headerRow}>
-        <View style={styles.titleRow}>
-          <Ionicons name="wallet-outline" size={18} color={THEME.colors.emerald} />
-          <Text style={[styles.titleText, isDarkMode && { color: '#F0FDFA' }]}>TODAY'S CASH & M-PESA DRAWER</Text>
-        </View>
-        <Text style={[styles.dateBadge, isDarkMode && { backgroundColor: '#1B4F55', color: '#CFE9EC' }]}>{todayStr}</Text>
+        <Text style={[styles.titleText, isDarkMode && { color: '#F0FDFA' }]}>TODAY'S DRAWER</Text>
+        <Text style={[styles.dateBadge, isDarkMode && { backgroundColor: '#256A71', color: '#CFE9EC' }]}>{todayStr}</Text>
       </View>
 
-      {/* Main Drawer Balances */}
-      <View style={styles.balancesGrid}>
+      {/* Drawer Elements in List Form */}
+      <View style={styles.listContainer}>
         {/* Expected Cash in Hand */}
-        <View style={[styles.balanceItem, isDarkMode && styles.balanceItemDark]}>
-          <Text style={[styles.balanceLabel, isDarkMode && { color: '#B4D6D9' }]}>EXPECTED CASH IN HAND</Text>
-          <Text style={[styles.balanceAmount, isDarkMode ? { color: '#F0FDFA' } : { color: '#065F46' }]}>
+        <View style={[styles.listRow, isDarkMode && styles.listRowDark]}>
+          <View style={styles.listLeft}>
+            <Text style={[styles.listLabel, isDarkMode && { color: '#F0FDFA' }]}>
+              Expected Cash in Hand
+            </Text>
+            <Text style={[styles.listSub, isDarkMode && { color: '#CFE9EC' }]}>
+              Sales: +{cashSales.toLocaleString()} | Debt Rec: +{cashRepayments.toLocaleString()}
+            </Text>
+          </View>
+          <Text style={[styles.listValue, isDarkMode ? { color: '#6EE7B7' } : { color: '#065F46' }]}>
             Ksh {netCashInHand.toLocaleString()}
-          </Text>
-          <Text style={[styles.balanceBreakdown, isDarkMode && { color: '#CFE9EC' }]}>
-            Sales: +{cashSales.toLocaleString()} | Debt Rec: +{cashRepayments.toLocaleString()}
           </Text>
         </View>
 
         {/* Expected M-Pesa Wallet */}
-        <View style={[styles.balanceItem, isDarkMode && styles.balanceItemDark]}>
-          <Text style={[styles.balanceLabel, isDarkMode && { color: '#B4D6D9' }]}>EXPECTED M-PESA WALLET</Text>
-          <Text style={[styles.balanceAmount, isDarkMode ? { color: '#F0FDFA' } : { color: '#047857' }]}>
-            Ksh {netMpesaWallet.toLocaleString()}
-          </Text>
-          <Text style={[styles.balanceBreakdown, isDarkMode && { color: '#CFE9EC' }]}>
-            Sales: +{mpesaSales.toLocaleString()} | Debt Rec: +{mpesaRepayments.toLocaleString()}
-          </Text>
-        </View>
-      </View>
-
-      {/* Credit & Expenses Row */}
-      <View style={styles.statsRow}>
-        <View style={[styles.statBox, isDarkMode && styles.statBoxDark]}>
-          <Text style={[styles.statLabel, isDarkMode && { color: '#B4D6D9' }]}>Credit Given Today</Text>
-          <Text style={[styles.statValue, isDarkMode && { color: '#F0FDFA' }]}>Ksh {creditIssued.toLocaleString()}</Text>
-        </View>
-
-        <TouchableOpacity style={[styles.statBoxAction, isDarkMode && styles.statBoxActionDark]} onPress={onOpenExpensesModal}>
-          <Text style={[styles.statLabel, isDarkMode && { color: '#B4D6D9' }]}>Expenses (Inc. 200 Fixed)</Text>
-          <Text style={[styles.statValueExp, isDarkMode && { color: '#FDE68A' }]}>
-            -Ksh {(cashExpenses + mpesaExpenses).toLocaleString()} ➔
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={[styles.statBoxAction, isDarkMode && styles.statBoxActionDark]} onPress={onOpenLaborModal}>
-          <Text style={[styles.statLabel, isDarkMode && { color: '#B4D6D9' }]}>Casual Labor ({todayLabor.length})</Text>
-          <Text style={[styles.statValueExp, isDarkMode && { color: '#FDE68A' }]}>
-            -Ksh {(cashLabor + mpesaLabor).toLocaleString()} ➔
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* 14:00 Close of Business (COB) Reconciliation Action Button */}
-      {role === 'MERCHANT' && (
-        <TouchableOpacity 
-          style={[styles.reconcileButton, isDarkMode && styles.reconcileButtonDark]} 
-          onPress={onOpenReconciliation}
-          activeOpacity={0.8}
-        >
-          <MaterialCommunityIcons name="scale-balance" size={20} color="#F0FDFA" />
-          <View>
-            <Text style={[styles.reconcileBtnTitle, isDarkMode && { color: '#F0FDFA' }]}>
-              14:00 COB RECONCILIATION
+        <View style={[styles.listRow, isDarkMode && styles.listRowDark]}>
+          <View style={styles.listLeft}>
+            <Text style={[styles.listLabel, isDarkMode && { color: '#F0FDFA' }]}>
+              Expected M-Pesa Wallet
             </Text>
-            <Text style={[styles.reconcileBtnSub, isDarkMode && { color: '#CFE9EC' }]}>
-              Hesabu ya Siku: Reconcile Physical Bags & Cash Drawer
+            <Text style={[styles.listSub, isDarkMode && { color: '#CFE9EC' }]}>
+              Sales: +{mpesaSales.toLocaleString()} | Debt Rec: +{mpesaRepayments.toLocaleString()}
             </Text>
           </View>
-        </TouchableOpacity>
-      )}
+          <Text style={[styles.listValue, isDarkMode ? { color: '#6EE7B7' } : { color: '#047857' }]}>
+            Ksh {netMpesaWallet.toLocaleString()}
+          </Text>
+        </View>
+
+        {/* Credit Given Today */}
+        <View style={[styles.listRow, { borderBottomWidth: 0, paddingBottom: 0 }]}>
+          <View style={styles.listLeft}>
+            <Text style={[styles.listLabel, isDarkMode && { color: '#F0FDFA' }]}>
+              Credit Given Today
+            </Text>
+          </View>
+          <Text style={[styles.listValue, isDarkMode ? { color: '#F0FDFA' } : { color: '#B45309' }]}>
+            Ksh {creditIssued.toLocaleString()}
+          </Text>
+        </View>
+      </View>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
+    backgroundColor: '#FFFDF7',
+    borderRadius: 8,
     padding: 16,
     marginHorizontal: 14,
     marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#CCFBF1',
-    shadowColor: '#0891B2',
+    shadowColor: '#000000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
+    shadowOpacity: 0.1,
     shadowRadius: 10,
-    elevation: 3,
+    elevation: 4,
   },
   cardDark: {
-    backgroundColor: '#256A71',
-    borderColor: '#7AB5BC',
-    borderWidth: 0.75,
+    backgroundColor: '#1B4F55',
     shadowColor: '#0D2C30',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 6,
   },
   headerRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: THEME.spacing.md,
-  },
-  titleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
+    marginBottom: 12,
   },
   titleText: {
     fontSize: 12,
     fontWeight: '800',
-    color: '#0E7490', // Deep Turquoise
+    color: '#0F172A',
     letterSpacing: 0.5,
   },
   dateBadge: {
@@ -214,120 +191,36 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     fontWeight: '600',
   },
-  balancesGrid: {
-    flexDirection: 'row',
+  listContainer: {
     gap: 8,
-    marginBottom: THEME.spacing.md,
   },
-  balanceItem: {
+  listRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  listRowDark: {
+    borderBottomColor: 'rgba(122, 181, 188, 0.25)',
+  },
+  listLeft: {
     flex: 1,
-    backgroundColor: '#ECFEFF', // Soft Turquoise
-    padding: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#A5F3FC',
+    paddingRight: 8,
   },
-  balanceItemDark: {
-    backgroundColor: '#1B4F55',
-    borderColor: 'rgba(122, 181, 188, 0.45)',
-    borderWidth: 0.75,
+  listLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#0F172A',
   },
-  balanceLabel: {
-    fontSize: 9,
-    fontWeight: '800',
-    color: '#0E7490',
-    letterSpacing: 0.5,
-    marginBottom: 4,
+  listSub: {
+    fontSize: 10,
+    color: '#64748B',
+    marginTop: 2,
   },
-  balanceAmount: {
-    fontSize: 17,
+  listValue: {
+    fontSize: 13,
     fontWeight: '900',
   },
-  balanceBreakdown: {
-    fontSize: 9,
-    color: '#0891B2',
-    marginTop: 4,
-  },
-  statsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-    marginBottom: THEME.spacing.md,
-  },
-  statBox: {
-    flex: 1,
-    minWidth: 100,
-    backgroundColor: '#F8FAFC',
-    padding: 8,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-  },
-  statBoxDark: {
-    backgroundColor: '#1B4F55',
-    borderColor: 'rgba(122, 181, 188, 0.45)',
-    borderWidth: 0.75,
-  },
-  statBoxAction: {
-    flex: 1,
-    minWidth: 100,
-    backgroundColor: '#FFF7ED',
-    padding: 8,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: '#FFEDD5',
-  },
-  statBoxActionDark: {
-    backgroundColor: '#1B4F55',
-    borderColor: '#FDE68A',
-    borderWidth: 0.75,
-  },
-  statLabel: {
-    fontSize: 9,
-    fontWeight: '700',
-    color: THEME.colors.textSecondary,
-  },
-  statValue: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: '#B45309',
-    marginTop: 2,
-  },
-  statValueExp: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: '#C2410C',
-    marginTop: 2,
-  },
-  reconcileButton: {
-    backgroundColor: '#0891B2', // Vibrant Turquoise
-    borderRadius: 10,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    shadowColor: '#0891B2',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
-    elevation: 3,
-  },
-  reconcileButtonDark: {
-    backgroundColor: '#1B4F55',
-    borderWidth: 0.75,
-    borderColor: '#7AB5BC',
-    shadowColor: '#0D2C30',
-  },
-  reconcileBtnTitle: {
-    color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: '800',
-    letterSpacing: 0.5,
-  },
-  reconcileBtnSub: {
-    color: '#ECFEFF',
-    fontSize: 10,
-    fontWeight: '500',
-  }
 });

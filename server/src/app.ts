@@ -26,7 +26,7 @@ export async function buildApp(opts: BuildAppOptions): Promise<{
   smsProvider: SmsProvider;
   notifier: CompositeNotifier;
 }> {
-  const app = Fastify({ logger: false });
+  const app = Fastify({ logger: false, bodyLimit: 10 * 1024 * 1024 });
   await app.register(cors, {
     origin: true,
     credentials: true,

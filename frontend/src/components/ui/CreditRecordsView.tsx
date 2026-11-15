@@ -11,12 +11,23 @@ import {
   View,
   Text,
   StyleSheet,
-  TouchableOpacity,
+  TouchableOpacity as RNTouchableOpacity,
   TextInput,
   ScrollView,
   Modal,
   Alert,
+  Platform,
 } from 'react-native';
+
+const TouchableOpacity: React.FC<React.ComponentProps<typeof RNTouchableOpacity>> = ({
+  style,
+  ...props
+}) => (
+  <RNTouchableOpacity
+    {...props}
+    style={[Platform.OS === 'web' && ({ cursor: 'pointer' } as any), style]}
+  />
+);
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { THEME } from '../../constants/theme';
 import { useAppStore } from '../../store/useAppStore';
@@ -65,6 +76,12 @@ export const CreditRecordsView: React.FC<CreditRecordsViewProps> = ({
     setSearchQuery('');
   };
 
+  // Per-batch accordion expansion state (default collapsed)
+  const [expandedBatchKeys, setExpandedBatchKeys] = useState<Record<string, boolean>>({});
+
+  // Repayment History & Balance Modal State
+  const [historyModalRecord, setHistoryModalRecord] = useState<FlattenedCreditRecord | null>(null);
+
   // Per-record accordion expansion state (default collapsed for cleaner display)
   const [expandedRecordIds, setExpandedRecordIds] = useState<Record<string, boolean>>({});
   // ISMS & QMS Policy / SOP Banner (Minimized by default, user clicks to activate, closes on toggle)
@@ -94,10 +111,10 @@ export const CreditRecordsView: React.FC<CreditRecordsViewProps> = ({
   }
 
   const allRecords: FlattenedCreditRecord[] = useMemo(() => {
-    const list: FlattenedCreditRecord[] = [];
+    const deduped = new Map<string, FlattenedCreditRecord>();
     customerCredits.forEach((cust) => {
       cust.records.forEach((rec) => {
-        list.push({
+        const flattened: FlattenedCreditRecord = {
           ...rec,
           customerId: cust.id,
           customerName: cust.customerName,
@@ -105,10 +122,38 @@ export const CreditRecordsView: React.FC<CreditRecordsViewProps> = ({
           customerNationalId: cust.customerNationalId || rec.buyerNationalId,
           customerCreditScore: rec.creditScore || cust.creditScore || 75,
           customerCreditRating: rec.creditRating || cust.creditRating || 'GOOD',
-        });
+        };
+        const dedupKey = rec.saleId
+          ? `sale:${rec.saleId}`
+          : [
+              cust.id || cust.customerName.trim().toLowerCase(),
+              rec.batchId || rec.batchNumber || '',
+              rec.dateIssued || '',
+              rec.grade,
+              rec.quantityNets,
+              rec.totalOwed,
+              (rec.sellerName || rec.authorizedBy || '').trim().toLowerCase(),
+            ].join('::');
+
+        const existing = deduped.get(dedupKey);
+        if (!existing) {
+          deduped.set(dedupKey, flattened);
+        } else {
+          const existingScore =
+            (existing.repayments?.length ?? 0) * 10 +
+            existing.amountPaid +
+            (existing.approvalStatus === 'APPROVED' ? 1 : 0);
+          const nextScore =
+            (flattened.repayments?.length ?? 0) * 10 +
+            flattened.amountPaid +
+            (flattened.approvalStatus === 'APPROVED' ? 1 : 0);
+          if (nextScore > existingScore) {
+            deduped.set(dedupKey, flattened);
+          }
+        }
       });
     });
-    return list;
+    return Array.from(deduped.values());
   }, [customerCredits]);
 
   // ISMS & QMS Role-based filtering:
@@ -303,77 +348,26 @@ export const CreditRecordsView: React.FC<CreditRecordsViewProps> = ({
 
   return (
     <View style={[styles.container, isDarkMode && styles.containerDark]}>
-      {/* ISMS / QMS Policy & SOP Bar (Minimized by Default) */}
-      <TouchableOpacity
-        style={[styles.minimizedPolicyBar, isDarkMode && styles.minimizedPolicyBarDark]}
-        onPress={() => setShowIsmsPolicy((prev) => !prev)}
-        activeOpacity={0.7}
-      >
-        <View style={styles.minimizedPolicyLeft}>
-          <Ionicons
-            name={role === 'SELLER' ? 'shield-checkmark' : 'shield-half'}
-            size={14}
-            color={isDarkMode ? '#CFE9EC' : (role === 'SELLER' ? '#059669' : '#0891B2')}
-          />
-          <Text style={[styles.minimizedPolicyText, isDarkMode && { color: '#F0FDFA' }]}>
-            {role === 'SELLER'
-              ? 'ISMS & QMS SOP: Role Isolation Active'
-              : 'ISMS & QMS Policy: Master Credit Governance'}
-          </Text>
-        </View>
-        <Text style={[styles.minimizedPolicyToggleText, isDarkMode && { color: '#CFE9EC' }]}>
-          {showIsmsPolicy ? 'Minimize ▴' : 'View SOP / Policy ▾'}
-        </Text>
-      </TouchableOpacity>
+      {/* Search Input Bar (Top-Most) */}
+      <View style={[styles.searchBar, isDarkMode && styles.searchBarDark]}>
+        <Ionicons name="search" size={16} color={isDarkMode ? '#CFE9EC' : '#94A3B8'} />
+        <TextInput
+          style={[styles.searchInput, isDarkMode && styles.textWhite]}
+          placeholder="Search debtor name, phone, national ID, or truck plate..."
+          placeholderTextColor={isDarkMode ? '#B4D6D9' : '#94A3B8'}
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+        />
+        {searchQuery.length > 0 && (
+          <TouchableOpacity onPress={() => setSearchQuery('')}>
+            <Ionicons name="close-circle" size={16} color={isDarkMode ? '#CFE9EC' : '#94A3B8'} />
+          </TouchableOpacity>
+        )}
+      </View>
 
-      {/* Expanded ISMS / QMS Policy & SOP Banner */}
-      {showIsmsPolicy && (
-        <View>
-          {role === 'SELLER' ? (
-            <View style={styles.ismsBannerSeller}>
-              <Ionicons name="shield-checkmark" size={16} color="#059669" />
-              <View style={{ flex: 1 }}>
-                <Text style={styles.ismsBannerSellerTitle}>
-                  ISMS & QMS ROLE ISOLATION SOP ACTIVE
-                </Text>
-                <Text style={styles.ismsBannerSellerText}>
-                  Displaying solely debtor accounts and credit transactions issued during your assigned sales sessions.
-                </Text>
-                <TouchableOpacity
-                  style={styles.closeIsmsBtn}
-                  onPress={() => setShowIsmsPolicy(false)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.closeIsmsBtnText}>Close / Minimize SOP ▴</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          ) : (
-            <View style={styles.ismsBannerMaster}>
-              <Ionicons name="shield-half" size={16} color="#0891B2" />
-              <View style={{ flex: 1 }}>
-                <Text style={styles.ismsBannerMasterTitle}>
-                  MASTER AUDIT & CREDITED PERSONS GOVERNANCE POLICY
-                </Text>
-                <Text style={styles.ismsBannerMasterText}>
-                  Consolidated enterprise ledger across all salespersons with staff liability attribution and sign-off authority.
-                </Text>
-                <TouchableOpacity
-                  style={styles.closeIsmsBtn}
-                  onPress={() => setShowIsmsPolicy(false)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.closeIsmsBtnText}>Close / Minimize Policy ▴</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          )}
-        </View>
-      )}
-
-      {/* KPI Overview Grid */}
-      <View style={styles.kpiGrid}>
-        <View style={[styles.kpiBox, isDarkMode && styles.kpiBoxDark]}>
+      {/* Merged KPI Summary Container (Active Debt + High-Risk Exposure) */}
+      <View style={[styles.kpiSummaryCard, isDarkMode && styles.kpiSummaryCardDark]}>
+        <View style={styles.kpiSummaryCol}>
           <Text style={[styles.kpiLabel, isDarkMode && { color: '#B4D6D9' }]}>
             TOTAL ACTIVE DEBT
           </Text>
@@ -385,11 +379,13 @@ export const CreditRecordsView: React.FC<CreditRecordsViewProps> = ({
           </Text>
         </View>
 
-        <View style={[styles.kpiBox, isDarkMode && styles.kpiBoxDark]}>
+        <View style={[styles.kpiSummaryDivider, isDarkMode && { backgroundColor: 'rgba(122, 181, 188, 0.35)' }]} />
+
+        <View style={styles.kpiSummaryCol}>
           <Text style={[styles.kpiLabel, isDarkMode && { color: '#B4D6D9' }]}>
             HIGH-RISK EXPOSURE
           </Text>
-          <Text style={[styles.kpiValue, { color: isDarkMode ? '#EE6C4D' : '#D97706' }]}>
+          <Text style={[styles.kpiValue, { color: isDarkMode ? '#FCA5A5' : '#D97706' }]}>
             Ksh {highRiskDebt.toLocaleString()}
           </Text>
           <Text style={[styles.kpiSub, isDarkMode && { color: '#CFE9EC' }]}>
@@ -398,70 +394,57 @@ export const CreditRecordsView: React.FC<CreditRecordsViewProps> = ({
         </View>
 
         {pendingApprovalsCount > 0 && (
-          <View style={[styles.kpiBox, styles.kpiBoxPending]}>
-            <Text style={[styles.kpiLabel, { color: '#B45309' }]}>PENDING SIGN-OFF</Text>
-            <Text style={[styles.kpiValue, { color: '#B45309' }]}>
-              {pendingApprovalsCount}
-            </Text>
-            <Text style={[styles.kpiSub, { color: '#92400E' }]}>Awaiting Master</Text>
-          </View>
-        )}
-      </View>
-
-      {/* Search Input Bar */}
-      <View style={[styles.searchBar, isDarkMode && styles.searchBarDark]}>
-        <Ionicons name="search" size={16} color="#94A3B8" />
-        <TextInput
-          style={[styles.searchInput, isDarkMode && styles.textWhite]}
-          placeholder="Search debtor name, phone, national ID, or truck plate..."
-          placeholderTextColor="#94A3B8"
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-        />
-        {searchQuery.length > 0 && (
-          <TouchableOpacity onPress={() => setSearchQuery('')}>
-            <Ionicons name="close-circle" size={16} color="#94A3B8" />
-          </TouchableOpacity>
-        )}
-      </View>
-
-      {/* Filter Toggle Button */}
-      <TouchableOpacity
-        style={[styles.filterToggleCard, isDarkMode && styles.filterToggleCardDark]}
-        onPress={() => setShowFilters(!showFilters)}
-        activeOpacity={0.7}
-      >
-        <View style={styles.filterToggleLeft}>
-          <Ionicons name="filter" size={15} color={isDarkMode ? '#F0FDFA' : '#0891B2'} />
-          <Text style={[styles.filterToggleTitle, isDarkMode && styles.textWhite]}>
-            Filter Debtor Records
-          </Text>
-          {activeFiltersCount > 0 && (
-            <View style={styles.activeFilterBadge}>
-              <Text style={styles.activeFilterBadgeText}>{activeFiltersCount} active</Text>
+          <>
+            <View style={[styles.kpiSummaryDivider, isDarkMode && { backgroundColor: 'rgba(122, 181, 188, 0.35)' }]} />
+            <View style={styles.kpiSummaryCol}>
+              <Text style={[styles.kpiLabel, { color: isDarkMode ? '#FDE68A' : '#B45309' }]}>PENDING</Text>
+              <Text style={[styles.kpiValue, { color: isDarkMode ? '#FDE68A' : '#B45309' }]}>
+                {pendingApprovalsCount}
+              </Text>
+              <Text style={[styles.kpiSub, { color: isDarkMode ? '#CFE9EC' : '#92400E' }]}>Sign-off</Text>
             </View>
-          )}
-        </View>
-        <View style={styles.filterToggleRight}>
-          <Text style={[styles.filterToggleAction, isDarkMode && { color: '#F0FDFA' }]}>
-            {showFilters ? 'Hide Filters' : 'Show Filters'}
-          </Text>
-          <Ionicons
-            name={showFilters ? 'chevron-up' : 'chevron-down'}
-            size={16}
-            color={isDarkMode ? '#F0FDFA' : '#0891B2'}
-          />
-        </View>
-      </TouchableOpacity>
+          </>
+        )}
+      </View>
 
-      {/* Structured Collapsible Filter Drawer */}
-      {showFilters && (
-        <View style={[styles.filterCardBox, isDarkMode && styles.filterCardBoxDark]}>
-          <View style={styles.filterCardHeader}>
-            <Text style={[styles.filterCardHeading, isDarkMode && styles.textWhite]}>
-              Filter by Status, Score, Date & Staff
+      {/* Main Unified Debtors Container (Filter Header + Debtors List) */}
+      <View style={[styles.debtorsMainCard, isDarkMode && styles.debtorsMainCardDark]}>
+        {/* Filter Toggle Row */}
+        <TouchableOpacity
+          style={styles.filterToggleRow}
+          onPress={() => setShowFilters(!showFilters)}
+          activeOpacity={0.7}
+        >
+          <View style={styles.filterToggleLeft}>
+            <Text style={[styles.filterToggleTitle, isDarkMode && styles.textWhite]}>
+              Filter Debt Records
             </Text>
             {activeFiltersCount > 0 && (
+              <View style={styles.activeFilterBadge}>
+                <Text style={styles.activeFilterBadgeText}>{activeFiltersCount} active</Text>
+              </View>
+            )}
+          </View>
+          <View style={styles.filterToggleRight}>
+            <Text style={[styles.filterToggleAction, isDarkMode && { color: '#7DD3FC' }]}>
+              {showFilters ? 'Hide Filters' : 'Show Filters'}
+            </Text>
+            <Ionicons
+              name={showFilters ? 'chevron-up' : 'chevron-down'}
+              size={16}
+              color={isDarkMode ? '#7DD3FC' : '#0891B2'}
+            />
+          </View>
+        </TouchableOpacity>
+
+        {/* Structured Collapsible Filter Drawer */}
+        {showFilters && (
+          <View style={[styles.filterInnerBox, isDarkMode && styles.filterInnerBoxDark]}>
+            <View style={styles.filterCardHeader}>
+              <Text style={[styles.filterCardHeading, isDarkMode && styles.textWhite]}>
+                Filter by Status, Score, Date & Staff
+              </Text>
+              {activeFiltersCount > 0 && (
               <TouchableOpacity onPress={resetFilters} style={styles.clearFiltersBtn}>
                 <Text style={styles.clearFiltersText}>Reset All</Text>
               </TouchableOpacity>
@@ -623,184 +606,239 @@ export const CreditRecordsView: React.FC<CreditRecordsViewProps> = ({
 
       {/* Credit Records Grouped by Batch & Date */}
       {groupedByBatchAndDate.length > 0 ? (
-        groupedByBatchAndDate.map((group) => (
-          <View key={group.batchKey} style={[styles.batchGroupCard, isDarkMode && styles.batchGroupCardDark]}>
-            {/* Batch & Date Header Bar */}
-            <View style={styles.batchGroupHeader}>
-              <View style={styles.batchTitleRow}>
-                <Ionicons name="cube" size={15} color="#0891B2" />
-                <Text style={[styles.batchHeadingText, isDarkMode && styles.textWhite]}>
-                  {group.batchNumber} • {group.truckPlate}
-                </Text>
-              </View>
-              <View style={styles.batchDateBadge}>
-                <Ionicons name="calendar-outline" size={11} color="#64748B" />
-                <Text style={styles.batchDateText}>{group.dateIssued}</Text>
-              </View>
-            </View>
+        groupedByBatchAndDate.map((group) => {
+          const isBatchExpanded = !!expandedBatchKeys[group.batchKey];
+          return (
+            <View
+              key={group.batchKey}
+              style={[
+                styles.batchGroupCard,
+                isDarkMode && styles.batchGroupCardDark,
+                isBatchExpanded && styles.batchGroupCardExpanded,
+              ]}
+            >
+              {/* Collapsible Batch & Date Header */}
+              <TouchableOpacity
+                activeOpacity={0.75}
+                onPress={() =>
+                  setExpandedBatchKeys((prev) => ({
+                    ...prev,
+                    [group.batchKey]: !prev[group.batchKey],
+                  }))
+                }
+              >
+                <View
+                  style={[
+                    styles.batchGroupHeader,
+                    isDarkMode && { borderBottomColor: 'rgba(122, 181, 188, 0.25)' },
+                    !isBatchExpanded && { borderBottomWidth: 0, marginBottom: 0, paddingBottom: 0 },
+                  ]}
+                >
+                  <View style={styles.batchTitleRow}>
+                    <Ionicons name="cube" size={15} color={isDarkMode ? '#7DD3FC' : '#0891B2'} />
+                    <Text style={[styles.batchHeadingText, isDarkMode && styles.textWhite]}>
+                      {group.batchNumber} • {group.truckPlate}
+                    </Text>
+                  </View>
+                  <Ionicons
+                    name={isBatchExpanded ? 'chevron-up' : 'chevron-down'}
+                    size={16}
+                    color={isDarkMode ? '#7DD3FC' : '#0891B2'}
+                  />
+                </View>
 
-            <View style={styles.batchSubStatsRow}>
-              <Text style={styles.batchSubStatsText}>
-                {group.records.length} Credited transaction(s) • Total Debt: Ksh{' '}
-                {group.batchTotalOutstanding.toLocaleString()}
-              </Text>
-            </View>
+                <View style={[styles.batchSubStatsRow, !isBatchExpanded && { marginBottom: 0, marginTop: 6 }, isBatchExpanded && { marginTop: 4 }]}>
+                  <Text style={[styles.batchSubStatsText, isDarkMode && { color: '#CFE9EC' }]}>
+                    {group.records.length} Credited transaction(s)
+                  </Text>
+                  <View style={[styles.batchDateBadge, isDarkMode && { backgroundColor: '#1B4F55' }]}>
+                    <Ionicons name="calendar-outline" size={11} color={isDarkMode ? '#B4D6D9' : '#64748B'} />
+                    <Text style={[styles.batchDateText, isDarkMode && { color: '#CFE9EC' }]}>{group.dateIssued}</Text>
+                  </View>
+                </View>
+              </TouchableOpacity>
 
-            {/* Individual Credited Persons in this Batch */}
-            <View style={styles.recordsList}>
-              {group.records.map((rec) => {
-                const balance = rec.totalOwed - rec.amountPaid;
-                const scoreInfo = getScoreBadgeColor(rec.customerCreditRating);
-                const isPending = rec.approvalStatus === 'PENDING';
+              {/* Individual Credited Persons in this Batch (shown on expand) */}
+              {isBatchExpanded && (
+                <View style={styles.recordsList}>
+                  {group.records.map((rec) => {
+                    const balance = rec.totalOwed - rec.amountPaid;
+                    const isPending = rec.approvalStatus === 'PENDING';
 
-                return (
-                  <View
-                    key={rec.id}
-                    style={[
-                      styles.recordCard,
-                      isDarkMode && styles.recordCardDark,
-                      isPending && styles.recordCardPending,
-                    ]}
-                  >
-                    {/* Top Row: Customer Info & In-House Credit Score */}
-                    <View style={styles.recordHeaderRow}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={[styles.customerName, isDarkMode && styles.textWhite]}>
-                          {rec.customerName}
-                        </Text>
-                        <Text style={styles.customerMeta}>
-                          🪪 ID: {rec.customerNationalId || 'N/A'} • 📞{' '}
-                          {maskPhoneNumber(rec.customerPhone)}
-                        </Text>
-                      </View>
-
-                      {/* In-House Credit Score Badge */}
-                      <View
+                    return (
+                      <TouchableOpacity
+                        key={rec.id}
+                        activeOpacity={0.8}
+                        onPress={() => setHistoryModalRecord(rec)}
                         style={[
-                          styles.scoreBadge,
-                          {
-                            backgroundColor: scoreInfo.bg,
-                            borderColor: scoreInfo.border,
-                          },
+                          styles.recordCard,
+                          isDarkMode && styles.recordCardDark,
+                          isPending && styles.recordCardPending,
                         ]}
                       >
-                        <MaterialCommunityIcons
-                          name="speedometer"
-                          size={13}
-                          color={scoreInfo.text}
-                        />
-                        <Text style={[styles.scoreBadgeText, { color: scoreInfo.text }]}>
-                          Score: {rec.customerCreditScore}/100 ({scoreInfo.label})
-                        </Text>
-                      </View>
-                    </View>
+                        {/* Top Row: Customer Info */}
+                        <View style={styles.recordHeaderRow}>
+                          <View style={{ flex: 1 }}>
+                            <Text style={[styles.customerName, isDarkMode && styles.textWhite]}>
+                              {rec.customerName}
+                            </Text>
+                            <Text style={[styles.customerMeta, isDarkMode && { color: '#B4D6D9' }]}>
+                              🪪 ID: {rec.customerNationalId || 'N/A'} • 📞{' '}
+                              {maskPhoneNumber(rec.customerPhone)}
+                            </Text>
+                          </View>
+                          <Ionicons
+                            name="chevron-forward"
+                            size={15}
+                            color={isDarkMode ? '#7DD3FC' : '#64748B'}
+                          />
+                        </View>
 
-                    {/* Middle Row: Quantity, Grade & Person Liable */}
-                    <View style={styles.recordDetailsRow}>
-                      <View style={styles.detailPill}>
-                        <Text style={styles.detailPillLabel}>SACKS</Text>
-                        <Text style={styles.detailPillValue}>
-                          {rec.quantityNets} nets ({rec.grade === 'GRADE_1' ? 'G1' : 'G2'})
-                        </Text>
-                      </View>
+                        {/* Middle Row: Quantity, Grade, Batch & Date Issued */}
+                        <View style={styles.recordDetailsRow}>
+                          <View style={styles.detailPill}>
+                            <Text style={[styles.detailPillLabel, isDarkMode && { color: '#B4D6D9' }]}>
+                              SACKS & BATCH
+                            </Text>
+                            <Text style={[styles.detailPillValue, isDarkMode && { color: '#F0FDFA' }]}>
+                              {rec.quantityNets} nets ({rec.grade === 'GRADE_1' ? 'G1' : 'G2'}) • {rec.batchNumber || rec.batchId || 'Batch'}
+                            </Text>
+                          </View>
 
-                      <View style={styles.detailPill}>
-                        <Text style={styles.detailPillLabel}>DUE DATE</Text>
-                        <Text style={styles.detailPillValue}>{rec.dueDate || '4-Day Term'}</Text>
-                      </View>
+                          <View style={styles.detailPill}>
+                            <Text style={[styles.detailPillLabel, isDarkMode && { color: '#B4D6D9' }]}>
+                              DATE ISSUED
+                            </Text>
+                            <Text style={[styles.detailPillValue, isDarkMode && { color: '#F0FDFA' }]}>
+                              {rec.dateIssued
+                                ? new Date(rec.dateIssued).toLocaleString('en-KE', {
+                                    day: '2-digit',
+                                    month: 'short',
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                  })
+                                : rec.dueDate || 'N/A'}
+                            </Text>
+                          </View>
+                        </View>
 
-                      <View style={styles.detailPill}>
-                        <Text style={styles.detailPillLabel}>LIABLE STAFF</Text>
-                        <Text style={[styles.detailPillValue, { color: '#0891B2' }]}>
-                          {rec.personLiable || rec.sellerName || (rec.authorizedBy && rec.authorizedBy !== 'Nelson' && rec.authorizedBy !== 'Merchant Admin' ? rec.authorizedBy : effectiveMaster)}
-                        </Text>
-                      </View>
-                    </View>
+                        <View style={[styles.recordDetailsRow, { marginTop: 2 }]}>
+                          <View style={styles.detailPill}>
+                            <Text style={[styles.detailPillLabel, isDarkMode && { color: '#B4D6D9' }]}>
+                              ISSUED BY
+                            </Text>
+                            <Text style={[styles.detailPillValue, { color: isDarkMode ? '#7DD3FC' : '#0891B2' }]}>
+                              {rec.sellerName || effectiveMaster}
+                            </Text>
+                          </View>
 
-                    {/* Financial Figures Row */}
-                    <View style={styles.financialRow}>
-                      <View>
-                        <Text style={styles.finLabel}>TOTAL OWED</Text>
-                        <Text style={[styles.finAmount, isDarkMode && styles.textWhite]}>
-                          Ksh {rec.totalOwed.toLocaleString()}
-                        </Text>
-                      </View>
+                          <View style={styles.detailPill}>
+                            <Text style={[styles.detailPillLabel, isDarkMode && { color: '#B4D6D9' }]}>
+                              GUARANTEED BY
+                            </Text>
+                            <Text style={[styles.detailPillValue, { color: isDarkMode ? '#7DD3FC' : '#0891B2' }]}>
+                              {rec.personLiable ||
+                                (rec.authorizedBy && rec.authorizedBy !== 'Nelson' && rec.authorizedBy !== 'Merchant Admin'
+                                  ? rec.authorizedBy
+                                  : effectiveMaster)}
+                            </Text>
+                          </View>
+                        </View>
 
-                      <View>
-                        <Text style={styles.finLabel}>PAID</Text>
-                        <Text style={[styles.finAmount, { color: '#059669' }]}>
-                          Ksh {rec.amountPaid.toLocaleString()}
-                        </Text>
-                      </View>
-
-                      <View style={{ alignItems: 'flex-end' }}>
-                        <Text style={styles.finLabel}>OUTSTANDING</Text>
-                        <Text
+                        {/* Financial Figures Row */}
+                        <View
                           style={[
-                            styles.finAmountBold,
-                            { color: balance > 0 ? '#DC2626' : '#059669' },
+                            styles.financialRow,
+                            isDarkMode && { borderTopColor: 'rgba(122, 181, 188, 0.25)' },
                           ]}
                         >
-                          {balance > 0 ? `Ksh ${balance.toLocaleString()}` : 'SETTLED (KSH 0)'}
-                        </Text>
-                      </View>
-                    </View>
+                          <View>
+                            <Text style={[styles.finLabel, isDarkMode && { color: '#B4D6D9' }]}>TOTAL OWED</Text>
+                            <Text style={[styles.finAmount, isDarkMode && styles.textWhite]}>
+                              Ksh {rec.totalOwed.toLocaleString()}
+                            </Text>
+                          </View>
 
-                    {/* Approval & Action Bar */}
-                    <View style={styles.actionBar}>
-                      {isPending ? (
-                        <View style={styles.pendingBanner}>
-                          <Ionicons name="time-outline" size={14} color="#D97706" />
-                          <Text style={styles.pendingBannerText}>
-                            PENDING MASTER SIGN-OFF
-                          </Text>
-                        </View>
-                      ) : (
-                        <View style={styles.approvedBanner}>
-                          <Ionicons name="checkmark-circle-outline" size={14} color="#059669" />
-                          <Text style={styles.approvedBannerText}>
-                            MASTER APPROVED • 4-DAY MAXIMUM TERM
-                          </Text>
-                        </View>
-                      )}
+                          <View>
+                            <Text style={[styles.finLabel, isDarkMode && { color: '#B4D6D9' }]}>PAID</Text>
+                            <Text style={[styles.finAmount, { color: isDarkMode ? '#6EE7B7' : '#059669' }]}>
+                              Ksh {rec.amountPaid.toLocaleString()}
+                            </Text>
+                          </View>
 
-                      {/* Master Approval Buttons */}
-                      {role === 'MERCHANT' && isPending && (
-                        <View style={styles.masterApprovalBtnRow}>
-                          <TouchableOpacity
-                            style={styles.rejectBtn}
-                            onPress={() => handleRejectCredit(rec.id, rec.customerName, rec.totalOwed)}
+                          <View style={{ alignItems: 'flex-end' }}>
+                            <Text style={[styles.finLabel, isDarkMode && { color: '#B4D6D9' }]}>OUTSTANDING</Text>
+                            <Text
+                              style={[
+                                styles.finAmountBold,
+                                { color: balance > 0 ? (isDarkMode ? '#FCA5A5' : '#DC2626') : (isDarkMode ? '#6EE7B7' : '#059669') },
+                              ]}
+                            >
+                              {balance > 0 ? `Ksh ${balance.toLocaleString()}` : 'SETTLED (KSH 0)'}
+                            </Text>
+                          </View>
+                        </View>
+
+                        {/* Action Bar */}
+                        {(isPending || balance > 0) && (
+                          <View
+                            style={[
+                              styles.actionBar,
+                              isDarkMode && { borderTopColor: 'rgba(122, 181, 188, 0.25)' },
+                            ]}
                           >
-                            <Text style={styles.rejectBtnText}>Reject</Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            style={styles.approveBtn}
-                            onPress={() => handleApproveCredit(rec.id, rec.customerName, rec.totalOwed)}
-                          >
-                            <Ionicons name="checkmark" size={13} color="#FFFFFF" />
-                            <Text style={styles.approveBtnText}>Approve</Text>
-                          </TouchableOpacity>
-                        </View>
-                      )}
+                            {isPending ? (
+                              <View style={styles.pendingBanner}>
+                                <Ionicons name="time-outline" size={14} color="#D97706" />
+                                <Text style={styles.pendingBannerText}>
+                                  PENDING MASTER SIGN-OFF
+                                </Text>
+                              </View>
+                            ) : (
+                              <View />
+                            )}
 
-                      {/* Repayment Trigger */}
-                      {balance > 0 && !isPending && (
-                        <TouchableOpacity
-                          style={styles.recordRepayBtn}
-                          onPress={() => handleOpenRepayment(rec.customerId, rec.id, balance)}
-                          activeOpacity={0.8}
-                        >
-                          <Ionicons name="cash" size={13} color="#FFFFFF" />
-                          <Text style={styles.recordRepayBtnText}>Collect Payment</Text>
-                        </TouchableOpacity>
-                      )}
-                    </View>
-                  </View>
-                );
-              })}
+                            {/* Master Approval Buttons */}
+                            {role === 'MERCHANT' && isPending && (
+                              <View style={styles.masterApprovalBtnRow}>
+                                <TouchableOpacity
+                                  style={styles.rejectBtn}
+                                  onPress={() => handleRejectCredit(rec.id, rec.customerName, rec.totalOwed)}
+                                >
+                                  <Text style={styles.rejectBtnText}>Reject</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                  style={styles.approveBtn}
+                                  onPress={() => handleApproveCredit(rec.id, rec.customerName, rec.totalOwed)}
+                                >
+                                  <Ionicons name="checkmark" size={13} color="#FFFFFF" />
+                                  <Text style={styles.approveBtnText}>Approve</Text>
+                                </TouchableOpacity>
+                              </View>
+                            )}
+
+                            {/* Repayment Link */}
+                            {balance > 0 && !isPending && (
+                              <TouchableOpacity
+                                style={styles.recordRepayLink}
+                                onPress={() => handleOpenRepayment(rec.customerId, rec.id, balance)}
+                                activeOpacity={0.7}
+                              >
+                                <Text style={[styles.recordRepayLinkText, isDarkMode && { color: '#7DD3FC' }]}>
+                                  Collect Payment
+                                </Text>
+                              </TouchableOpacity>
+                            )}
+                          </View>
+                        )}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              )}
             </View>
-          </View>
-        ))
+          );
+        })
       ) : (
         <View style={[styles.emptyBox, isDarkMode && styles.emptyBoxDark]}>
           <Ionicons
@@ -818,6 +856,145 @@ export const CreditRecordsView: React.FC<CreditRecordsViewProps> = ({
           </Text>
         </View>
       )}
+      </View>
+
+      {/* --- REPAYMENT HISTORY & BALANCE MODAL --- */}
+      <Modal
+        visible={historyModalRecord !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setHistoryModalRecord(null)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalCard, isDarkMode && styles.modalCardDark]}>
+            <View style={styles.modalHeader}>
+              <View style={styles.modalTitleRow}>
+                <Ionicons
+                  name="receipt-outline"
+                  size={20}
+                  color={isDarkMode ? '#7DD3FC' : '#0891B2'}
+                />
+                <Text style={[styles.modalTitle, isDarkMode && styles.textWhite]}>
+                  Repayment History & Balance
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => setHistoryModalRecord(null)}>
+                <Ionicons name="close" size={20} color={isDarkMode ? '#CFE9EC' : '#64748B'} />
+              </TouchableOpacity>
+            </View>
+
+            {historyModalRecord && (() => {
+              const modalBalance = historyModalRecord.totalOwed - historyModalRecord.amountPaid;
+              const isModalPending = historyModalRecord.approvalStatus === 'PENDING';
+              const repayments = historyModalRecord.repayments || [];
+
+              return (
+                <>
+                  <Text style={[styles.historyCustomerName, isDarkMode && styles.textWhite]}>
+                    {historyModalRecord.customerName}
+                  </Text>
+                  <Text style={[styles.historySubMeta, isDarkMode && { color: '#B4D6D9' }]}>
+                    {historyModalRecord.quantityNets} nets ({historyModalRecord.grade === 'GRADE_1' ? 'G1' : 'G2'}) • {historyModalRecord.batchNumber || historyModalRecord.batchId}
+                  </Text>
+
+                  <View style={[styles.historySummaryBox, isDarkMode && styles.historySummaryBoxDark]}>
+                    <View>
+                      <Text style={styles.finLabel}>TOTAL OWED</Text>
+                      <Text style={[styles.finAmount, isDarkMode && styles.textWhite]}>
+                        Ksh {historyModalRecord.totalOwed.toLocaleString()}
+                      </Text>
+                    </View>
+                    <View>
+                      <Text style={styles.finLabel}>TOTAL PAID</Text>
+                      <Text style={[styles.finAmount, { color: isDarkMode ? '#6EE7B7' : '#059669' }]}>
+                        Ksh {historyModalRecord.amountPaid.toLocaleString()}
+                      </Text>
+                    </View>
+                    <View style={{ alignItems: 'flex-end' }}>
+                      <Text style={styles.finLabel}>BALANCE</Text>
+                      <Text
+                        style={[
+                          styles.finAmountBold,
+                          { color: modalBalance > 0 ? (isDarkMode ? '#FCA5A5' : '#DC2626') : (isDarkMode ? '#6EE7B7' : '#059669') },
+                        ]}
+                      >
+                        Ksh {modalBalance.toLocaleString()}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <Text style={[styles.historySectionTitle, isDarkMode && { color: '#CFE9EC' }]}>
+                    Payment Installments ({repayments.length})
+                  </Text>
+
+                  <ScrollView style={styles.historyListScroll} nestedScrollEnabled>
+                    {repayments.length > 0 ? (
+                      repayments.map((rep, idx) => (
+                        <View
+                          key={rep.id || idx}
+                          style={[styles.historyItemRow, isDarkMode && styles.historyItemRowDark]}
+                        >
+                          <View style={{ flex: 1 }}>
+                            <Text style={[styles.historyItemAmount, isDarkMode && styles.textWhite]}>
+                              + Ksh {rep.amountPaid.toLocaleString()}
+                            </Text>
+                            <Text style={[styles.historyItemMeta, isDarkMode && { color: '#B4D6D9' }]}>
+                              {rep.paymentMethod}
+                              {rep.mpesaReceiptCode ? ` • Ref: ${rep.mpesaReceiptCode}` : ''}
+                            </Text>
+                          </View>
+                          <Text style={[styles.historyItemDate, isDarkMode && { color: '#CFE9EC' }]}>
+                            {rep.timestamp
+                              ? new Date(rep.timestamp).toLocaleString('en-KE', {
+                                  day: '2-digit',
+                                  month: 'short',
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                })
+                              : 'Recorded'}
+                          </Text>
+                        </View>
+                      ))
+                    ) : (
+                      <View style={styles.historyEmptyBox}>
+                        <Text style={[styles.historyEmptyText, isDarkMode && { color: '#B4D6D9' }]}>
+                          No repayments recorded yet for this credit entry.
+                        </Text>
+                      </View>
+                    )}
+                  </ScrollView>
+
+                  <View style={styles.historyFooterRow}>
+                    {modalBalance > 0 && !isModalPending && (
+                      <TouchableOpacity
+                        style={styles.recordRepayLink}
+                        onPress={() => {
+                          const target = historyModalRecord;
+                          setHistoryModalRecord(null);
+                          handleOpenRepayment(target.customerId, target.id, modalBalance);
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={[styles.recordRepayLinkText, isDarkMode && { color: '#7DD3FC' }]}>
+                          Collect Payment
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+                    <TouchableOpacity
+                      onPress={() => setHistoryModalRecord(null)}
+                      style={styles.historyCloseBtn}
+                    >
+                      <Text style={[styles.historyCloseBtnText, isDarkMode && { color: '#CFE9EC' }]}>
+                        Close
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </>
+              );
+            })()}
+          </View>
+        </View>
+      </Modal>
 
       {/* --- REPAYMENT MODAL --- */}
       <Modal
@@ -830,17 +1007,16 @@ export const CreditRecordsView: React.FC<CreditRecordsViewProps> = ({
           <View style={[styles.modalCard, isDarkMode && styles.modalCardDark]}>
             <View style={styles.modalHeader}>
               <View style={styles.modalTitleRow}>
-                <Ionicons name="cash-outline" size={20} color="#059669" />
                 <Text style={[styles.modalTitle, isDarkMode && styles.textWhite]}>
                   Collect Credit Repayment
                 </Text>
               </View>
               <TouchableOpacity onPress={() => setPayingEntryId(null)}>
-                <Ionicons name="close" size={20} color="#64748B" />
+                <Ionicons name="close" size={20} color={isDarkMode ? '#CFE9EC' : '#64748B'} />
               </TouchableOpacity>
             </View>
 
-            <Text style={[styles.modalSubtitle, isDarkMode && { color: '#94A3B8' }]}>
+            <Text style={[styles.modalSubtitle, isDarkMode && { color: '#CFE9EC' }]}>
               Enter collected cash or M-Pesa amount. Recorded into today's reconciliation without duplicating sack stock counts.
             </Text>
 
@@ -849,6 +1025,7 @@ export const CreditRecordsView: React.FC<CreditRecordsViewProps> = ({
               <TouchableOpacity
                 style={[
                   styles.methodBtn,
+                  isDarkMode && { backgroundColor: '#1B4F55', borderColor: '#7AB5BC' },
                   repayMethod === 'MPESA' && styles.methodBtnActiveMpesa,
                 ]}
                 onPress={() => setRepayMethod('MPESA')}
@@ -856,11 +1033,12 @@ export const CreditRecordsView: React.FC<CreditRecordsViewProps> = ({
                 <Ionicons
                   name="phone-portrait"
                   size={14}
-                  color={repayMethod === 'MPESA' ? '#FFFFFF' : '#059669'}
+                  color={repayMethod === 'MPESA' ? '#FFFFFF' : isDarkMode ? '#6EE7B7' : '#059669'}
                 />
                 <Text
                   style={[
                     styles.methodBtnText,
+                    isDarkMode && { color: '#E2F5F7' },
                     repayMethod === 'MPESA' && styles.methodBtnTextActive,
                   ]}
                 >
@@ -871,6 +1049,7 @@ export const CreditRecordsView: React.FC<CreditRecordsViewProps> = ({
               <TouchableOpacity
                 style={[
                   styles.methodBtn,
+                  isDarkMode && { backgroundColor: '#1B4F55', borderColor: '#7AB5BC' },
                   repayMethod === 'CASH' && styles.methodBtnActiveCash,
                 ]}
                 onPress={() => setRepayMethod('CASH')}
@@ -878,11 +1057,12 @@ export const CreditRecordsView: React.FC<CreditRecordsViewProps> = ({
                 <MaterialCommunityIcons
                   name="cash"
                   size={16}
-                  color={repayMethod === 'CASH' ? '#FFFFFF' : '#0891B2'}
+                  color={repayMethod === 'CASH' ? '#FFFFFF' : isDarkMode ? '#7DD3FC' : '#0891B2'}
                 />
                 <Text
                   style={[
                     styles.methodBtnText,
+                    isDarkMode && { color: '#E2F5F7' },
                     repayMethod === 'CASH' && styles.methodBtnTextActive,
                   ]}
                 >
@@ -893,7 +1073,7 @@ export const CreditRecordsView: React.FC<CreditRecordsViewProps> = ({
 
             {/* Repayment Amount */}
             <View style={styles.formGroup}>
-              <Text style={[styles.formLabel, isDarkMode && styles.textWhite]}>
+              <Text style={[styles.formLabel, isDarkMode && { color: '#F0FDFA' }]}>
                 Repayment Amount (Ksh):
               </Text>
               <TextInput
@@ -902,14 +1082,14 @@ export const CreditRecordsView: React.FC<CreditRecordsViewProps> = ({
                 value={repayAmount}
                 onChangeText={setRepayAmount}
                 placeholder="e.g. 5000"
-                placeholderTextColor="#94A3B8"
+                placeholderTextColor={isDarkMode ? '#B4D6D9' : '#94A3B8'}
               />
             </View>
 
             {/* M-Pesa Code if applicable */}
             {repayMethod === 'MPESA' && (
               <View style={styles.formGroup}>
-                <Text style={[styles.formLabel, isDarkMode && styles.textWhite]}>
+                <Text style={[styles.formLabel, isDarkMode && { color: '#F0FDFA' }]}>
                   M-Pesa Receipt Code (Optional):
                 </Text>
                 <TextInput
@@ -917,7 +1097,7 @@ export const CreditRecordsView: React.FC<CreditRecordsViewProps> = ({
                   value={mpesaRef}
                   onChangeText={setMpesaRef}
                   placeholder="e.g. QJK9923KPP"
-                  placeholderTextColor="#94A3B8"
+                  placeholderTextColor={isDarkMode ? '#B4D6D9' : '#94A3B8'}
                   autoCapitalize="characters"
                 />
               </View>
@@ -926,10 +1106,15 @@ export const CreditRecordsView: React.FC<CreditRecordsViewProps> = ({
             {/* Buttons */}
             <View style={styles.modalBtnRow}>
               <TouchableOpacity
-                style={styles.modalCancelBtn}
+                style={[
+                  styles.modalCancelBtn,
+                  isDarkMode && { backgroundColor: '#1B4F55', borderColor: '#7AB5BC' },
+                ]}
                 onPress={() => setPayingEntryId(null)}
               >
-                <Text style={styles.modalCancelBtnText}>Cancel</Text>
+                <Text style={[styles.modalCancelBtnText, isDarkMode && { color: '#F0FDFA' }]}>
+                  Cancel
+                </Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -1053,18 +1238,81 @@ const styles = StyleSheet.create({
     gap: 8,
     marginBottom: 10,
   },
+  kpiSummaryCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: THEME.borderRadius.md,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    marginBottom: 10,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  kpiSummaryCardDark: {
+    backgroundColor: '#256A71',
+    shadowColor: '#0D2C30',
+    shadowOpacity: 0.28,
+  },
+  kpiSummaryCol: {
+    flex: 1,
+    alignItems: 'flex-start',
+  },
+  kpiSummaryDivider: {
+    width: 1,
+    alignSelf: 'stretch',
+    backgroundColor: '#E2E8F0',
+    marginHorizontal: 10,
+  },
+  debtorsMainCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: THEME.borderRadius.lg,
+    padding: 12,
+    marginBottom: 12,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    elevation: 4,
+  },
+  debtorsMainCardDark: {
+    backgroundColor: '#256A71',
+    shadowColor: '#0D2C30',
+    shadowOpacity: 0.3,
+  },
+  filterToggleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 6,
+    marginBottom: 16,
+  },
+  filterInnerBox: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 8,
+    padding: 10,
+    marginBottom: 10,
+  },
+  filterInnerBoxDark: {
+    backgroundColor: '#1B4F55',
+  },
   kpiBox: {
     flex: 1,
     backgroundColor: '#FFFFFF',
     borderRadius: THEME.borderRadius.md,
     padding: 10,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    elevation: 2,
   },
   kpiBoxDark: {
     backgroundColor: '#256A71',
-    borderColor: '#7AB5BC',
-    borderWidth: 0.75,
   },
   kpiBoxPending: {
     backgroundColor: '#FFFBEB',
@@ -1093,17 +1341,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     backgroundColor: '#FFFFFF',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#CBD5E1',
-    paddingHorizontal: 10,
-    paddingVertical: 7,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     marginBottom: 10,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.07,
+    shadowRadius: 6,
+    elevation: 3,
   },
   searchBarDark: {
     backgroundColor: '#256A71',
-    borderColor: '#7AB5BC',
-    borderWidth: 0.75,
+    shadowColor: '#0D2C30',
+    shadowOpacity: 0.25,
   },
   searchInput: {
     flex: 1,
@@ -1132,12 +1383,15 @@ const styles = StyleSheet.create({
   filterToggleLeft: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexWrap: 'wrap',
+    flex: 1,
     gap: 8,
   },
   filterToggleTitle: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '700',
     color: '#0F172A',
+    marginBottom: 2,
   },
   activeFilterBadge: {
     backgroundColor: '#0891B2',
@@ -1153,6 +1407,7 @@ const styles = StyleSheet.create({
   filterToggleRight: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexShrink: 0,
     gap: 4,
   },
   filterToggleAction: {
@@ -1238,17 +1493,26 @@ const styles = StyleSheet.create({
 
   // Batch Groups
   batchGroupCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: THEME.borderRadius.lg,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    padding: 12,
-    marginBottom: 12,
+    backgroundColor: '#F8FAFC',
+    borderRadius: THEME.borderRadius.md,
+    padding: 10,
+    marginBottom: 10,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
   },
   batchGroupCardDark: {
-    backgroundColor: '#256A71',
-    borderColor: '#7AB5BC',
-    borderWidth: 0.75,
+    backgroundColor: '#1D575D',
+    shadowColor: '#0D2C30',
+    shadowOpacity: 0.22,
+  },
+  batchGroupCardExpanded: {
+    backgroundColor: 'transparent',
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    elevation: 0,
   },
   batchGroupHeader: {
     flexDirection: 'row',
@@ -1284,11 +1548,15 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   batchSubStatsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: 8,
   },
   batchSubStatsText: {
     fontSize: 10,
     color: '#64748B',
+    fontWeight: '600',
   },
 
   // Records List
@@ -1296,16 +1564,19 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   recordCard: {
-    backgroundColor: '#F8FAFC',
+    backgroundColor: '#FFFFFF',
     borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
     padding: 10,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 5,
+    elevation: 2,
   },
   recordCardDark: {
     backgroundColor: '#1B4F55',
-    borderColor: 'rgba(122, 181, 188, 0.45)',
-    borderWidth: 0.75,
+    shadowColor: '#0D2C30',
+    shadowOpacity: 0.25,
   },
   recordCardPending: {
     borderColor: '#FDE68A',
@@ -1343,11 +1614,9 @@ const styles = StyleSheet.create({
   },
   recordDetailsRow: {
     flexDirection: 'row',
-    gap: 6,
-    backgroundColor: '#FFFFFF',
-    padding: 6,
-    borderRadius: 6,
-    marginBottom: 6,
+    gap: 8,
+    paddingVertical: 2,
+    marginBottom: 4,
   },
   detailPill: {
     flex: 1,
@@ -1457,6 +1726,99 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '800',
     color: '#FFFFFF',
+  },
+  recordRepayLink: {
+    paddingVertical: 4,
+    paddingHorizontal: 2,
+  },
+  recordRepayLinkText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#0891B2',
+    textDecorationLine: 'underline',
+  },
+  historyCustomerName: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#0F172A',
+    marginTop: 4,
+  },
+  historySubMeta: {
+    fontSize: 11,
+    color: '#64748B',
+    marginTop: 2,
+    marginBottom: 10,
+  },
+  historySummaryBox: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 8,
+    padding: 10,
+    marginBottom: 12,
+  },
+  historySummaryBoxDark: {
+    backgroundColor: '#1B4F55',
+  },
+  historySectionTitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#475569',
+    marginBottom: 6,
+  },
+  historyListScroll: {
+    maxHeight: 220,
+    marginBottom: 12,
+  },
+  historyItemRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+  },
+  historyItemRowDark: {
+    borderBottomColor: 'rgba(122, 181, 188, 0.25)',
+  },
+  historyItemAmount: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  historyItemMeta: {
+    fontSize: 10,
+    color: '#64748B',
+    marginTop: 2,
+  },
+  historyItemDate: {
+    fontSize: 10,
+    color: '#64748B',
+    fontWeight: '600',
+  },
+  historyEmptyBox: {
+    paddingVertical: 16,
+    alignItems: 'center',
+  },
+  historyEmptyText: {
+    fontSize: 11,
+    color: '#64748B',
+  },
+  historyFooterRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: 4,
+  },
+  historyCloseBtn: {
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    marginLeft: 'auto',
+  },
+  historyCloseBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#64748B',
   },
 
   // Empty State

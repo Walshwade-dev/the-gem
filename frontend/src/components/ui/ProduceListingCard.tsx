@@ -133,20 +133,20 @@ export const ProduceListingCard: React.FC<ProduceListingCardProps> = ({
         </Text>
 
         {/* Pricing Info */}
-        <View style={styles.pricingRow}>
+        <View style={[styles.pricingRow, isDarkMode && styles.pricingRowDark]}>
           <View>
-            <Text style={styles.priceLabel}>WHOLESALE PRICE</Text>
-            <Text style={[styles.priceValue, isDarkMode && { color: '#38BDF8' }]}>
+            <Text style={[styles.priceLabel, isDarkMode && { color: '#CFE9EC' }]}>WHOLESALE PRICE</Text>
+            <Text style={[styles.priceValue, isDarkMode && { color: '#7DD3FC' }]}>
               Ksh {item.pricePerBag.toLocaleString()}
             </Text>
             {item.minPrice !== undefined && item.minPrice > 0 ? (
-              <Text style={styles.minFloorText}>
+              <Text style={[styles.minFloorText, isDarkMode && { color: '#FDE68A' }]}>
                 Min Floor: Ksh {item.minPrice.toLocaleString()}
               </Text>
             ) : null}
           </View>
-          <View style={styles.unitPriceBox}>
-            <Text style={styles.unitPriceText}>~Ksh {pricePerKg} / kg</Text>
+          <View style={[styles.unitPriceBox, isDarkMode && styles.unitPriceBoxDark]}>
+            <Text style={[styles.unitPriceText, isDarkMode && { color: '#7DD3FC' }]}>~Ksh {pricePerKg} / kg</Text>
           </View>
         </View>
 
@@ -200,23 +200,20 @@ export const ProduceListingCard: React.FC<ProduceListingCardProps> = ({
 const styles = StyleSheet.create({
   card: {
     backgroundColor: '#FFFFFF',
-    borderRadius: THEME.borderRadius.lg, // 16px
-    borderWidth: 1.5,
-    borderColor: '#CCFBF1',
+    borderRadius: 12,
     marginHorizontal: 14,
     marginBottom: 14,
     overflow: 'hidden',
-    shadowColor: '#0891B2',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
-    elevation: 3,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 5,
+    elevation: 2,
   },
   cardDark: {
     backgroundColor: '#256A71',
-    borderColor: '#7AB5BC',
-    borderWidth: 0.75,
     shadowColor: '#0D2C30',
+    shadowOpacity: 0.25,
   },
   imageWrapper: {
     width: '100%',
@@ -337,6 +334,9 @@ const styles = StyleSheet.create({
     borderRadius: THEME.borderRadius.md,
     marginBottom: 12,
   },
+  pricingRowDark: {
+    backgroundColor: '#1B4F55',
+  },
   priceLabel: {
     fontSize: 9,
     fontWeight: '800',
@@ -353,8 +353,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 6,
-    borderWidth: 1,
-    borderColor: '#A5F3FC',
+  },
+  unitPriceBoxDark: {
+    backgroundColor: '#256A71',
   },
   unitPriceText: {
     fontSize: 11,

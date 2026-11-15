@@ -17,6 +17,8 @@ import {
   ScrollView,
   Alert,
   Platform,
+  Linking,
+  Share,
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { THEME } from '../../constants/theme';
@@ -25,13 +27,18 @@ import { BatchPurchaseCosts } from '../../types';
 
 interface MasterBatchLedgerReceiptProps {
   isDarkMode?: boolean;
+  selectedBatchId?: string;
+  onEditMarketExpenses?: () => void;
 }
 
 export const MasterBatchLedgerReceipt: React.FC<MasterBatchLedgerReceiptProps> = ({
   isDarkMode = false,
+  selectedBatchId,
+  onEditMarketExpenses,
 }) => {
   const {
-    currentBatch,
+    currentBatch: storeCurrentBatch,
+    historicalBatches,
     sales,
     expenses,
     casualLaborers,
@@ -43,6 +50,11 @@ export const MasterBatchLedgerReceipt: React.FC<MasterBatchLedgerReceiptProps> =
     updateBatchPurchaseCosts,
   } = useAppStore();
 
+  const currentBatch =
+    (selectedBatchId
+      ? [storeCurrentBatch, ...historicalBatches].find((b) => b?.id === selectedBatchId)
+      : storeCurrentBatch) ?? storeCurrentBatch;
+
   const effectiveAdmin = masterName || (role === 'MERCHANT' ? currentUserName : '') || 'Master';
 
   // Edit Costs Modal State
@@ -52,16 +64,16 @@ export const MasterBatchLedgerReceipt: React.FC<MasterBatchLedgerReceiptProps> =
   const [showSourcingDetails, setShowSourcingDetails] = useState(false);
   const [showOverheadsDetails, setShowOverheadsDetails] = useState(false);
   const [showSalesDetails, setShowSalesDetails] = useState(false);
-  const [showBalancingDetails, setShowBalancingDetails] = useState(false);
+  const [showCollectionChannels, setShowCollectionChannels] = useState(false);
 
-  // Form state initialized from current batch costs
-  const costs: BatchPurchaseCosts = currentBatch?.purchaseCosts || {
-    pricePerKg: 95,
-    avgNetWeightKg: 90,
-    packagingNetUnitCost: 45,
-    transportFee: 45000,
-    brokerSourcingFee: 6000,
-    farmLoadersSortersFee: 4500,
+  // Form state initialized from current batch costs (defaults to 0 until manually entered)
+  const costs: BatchPurchaseCosts = {
+    pricePerKg: currentBatch?.purchaseCosts?.pricePerKg ?? 0,
+    avgNetWeightKg: currentBatch?.purchaseCosts?.avgNetWeightKg ?? 0,
+    packagingNetUnitCost: currentBatch?.purchaseCosts?.packagingNetUnitCost ?? 0,
+    transportFee: currentBatch?.purchaseCosts?.transportFee ?? 0,
+    brokerSourcingFee: currentBatch?.purchaseCosts?.brokerSourcingFee ?? 0,
+    farmLoadersSortersFee: currentBatch?.purchaseCosts?.farmLoadersSortersFee ?? 0,
   };
 
   const [pricePerKgInput, setPricePerKgInput] = useState(String(costs.pricePerKg));
@@ -81,11 +93,11 @@ export const MasterBatchLedgerReceipt: React.FC<MasterBatchLedgerReceiptProps> =
 
   // --- 1. QUANTITY & SOURCING CALCULATIONS ---
   const totalNets = currentBatch.initialGrade1Nets + currentBatch.initialGrade2Nets;
-  const avgWeight = costs.avgNetWeightKg || 90;
+  const avgWeight = costs.avgNetWeightKg || 0;
   const totalKg = totalNets * avgWeight;
   const produceCost = totalKg * (costs.pricePerKg || 0);
   const packagingCost = totalNets * (costs.packagingNetUnitCost || 0);
-  const cessPaid = currentBatch.nccCessPaid || 0;
+  const cessPaid = currentBatch.isNccCessPaid ? (currentBatch.nccCessPaid || 0) : 0;
   const transportCost = costs.transportFee || 0;
   const brokerCost = costs.brokerSourcingFee || 0;
   const farmLaborCost = costs.farmLoadersSortersFee || 0;
@@ -94,41 +106,60 @@ export const MasterBatchLedgerReceipt: React.FC<MasterBatchLedgerReceiptProps> =
     produceCost + packagingCost + cessPaid + transportCost + brokerCost + farmLaborCost;
 
   // --- 2. MARKET OVERHEADS CALCULATIONS ---
-  // Demurrage
-  const demurrageCost =
-    currentBatch.dayNumber > 1 ? (currentBatch.dayNumber - 1) * 1000 : 0;
+  // Only count expenses and labor explicitly logged and settled (isPaid === true) for this batch
+  const batchExpenses = expenses.filter(
+    (e) => e.batchId === currentBatch.id && e.isPaid === true
+  );
 
-  // Filter batch expenses
-  const batchExpenses = expenses;
+  const isNccDailyExpense = (e: (typeof batchExpenses)[number]) => {
+    const desc = e.description.toLowerCase();
+    return (
+      e.category === 'DEMURRAGE' ||
+      (e.category as string) === 'NCC_CESS' ||
+      (e.category as string) === 'COUNTY_CESS' ||
+      (e.category as string) === 'NCC_DAILY' ||
+      desc.includes('ncc') ||
+      desc.includes('demurrage') ||
+      desc.includes('cess')
+    );
+  };
+
+  const isWatchmanExpense = (e: (typeof batchExpenses)[number]) => {
+    const desc = e.description.toLowerCase();
+    return e.category === 'WATCHMAN' || desc.includes('watchman') || desc.includes('security');
+  };
+
+  const isSanitationExpense = (e: (typeof batchExpenses)[number]) => {
+    const desc = e.description.toLowerCase();
+    return (
+      e.category === 'CLEANER' ||
+      (e.category as string) === 'SWEEPING_AND_SANITATION' ||
+      desc.includes('clean') ||
+      desc.includes('sweep') ||
+      desc.includes('sanitation')
+    );
+  };
+
+  const demurrageCost = batchExpenses
+    .filter(isNccDailyExpense)
+    .reduce((sum, e) => sum + e.amount, 0);
+
   const watchmanExpense = batchExpenses
-    .filter((e) => e.category === 'WATCHMAN' || e.description.toLowerCase().includes('watchman') || e.description.toLowerCase().includes('security'))
+    .filter((e) => !isNccDailyExpense(e) && isWatchmanExpense(e))
     .reduce((sum, e) => sum + e.amount, 0);
 
   const sanitationExpense = batchExpenses
-    .filter(
-      (e) =>
-        e.category === 'CLEANER' ||
-        (e.category as string) === 'SWEEPING_AND_SANITATION' ||
-        e.description.toLowerCase().includes('clean') ||
-        e.description.toLowerCase().includes('sweep') ||
-        e.description.toLowerCase().includes('sanitation')
-    )
+    .filter((e) => !isNccDailyExpense(e) && !isWatchmanExpense(e) && isSanitationExpense(e))
     .reduce((sum, e) => sum + e.amount, 0);
 
   const casualLaborExpense = casualLaborers
-    .filter((l) => l.isPaid)
+    .filter((l) => l.batchId === currentBatch.id && l.isPaid)
     .reduce((sum, l) => sum + l.agreedWage, 0);
 
-  const otherExpenses = batchExpenses
-    .filter(
-      (e) =>
-        e.category !== 'WATCHMAN' &&
-        (e.category as string) !== 'SWEEPING_AND_SANITATION' &&
-        e.category !== 'CLEANER' &&
-        !e.description.toLowerCase().includes('watchman') &&
-        !e.description.toLowerCase().includes('clean')
-    )
-    .reduce((sum, e) => sum + e.amount, 0);
+  const otherExpenseItems = batchExpenses.filter(
+    (e) => !isNccDailyExpense(e) && !isWatchmanExpense(e) && !isSanitationExpense(e)
+  );
+  const otherExpenses = otherExpenseItems.reduce((sum, e) => sum + e.amount, 0);
 
   const totalMarketOverheads =
     demurrageCost + watchmanExpense + sanitationExpense + casualLaborExpense + otherExpenses;
@@ -143,12 +174,12 @@ export const MasterBatchLedgerReceipt: React.FC<MasterBatchLedgerReceiptProps> =
   const g1Sales = batchSales.filter((s) => s.grade === 'GRADE_1');
   const g1SoldNets = g1Sales.reduce((sum, s) => sum + s.quantityNets, 0);
   const g1Revenue = g1Sales.reduce((sum, s) => sum + s.totalAmount, 0);
-  const avgG1Price = g1SoldNets > 0 ? g1Revenue / g1SoldNets : 1300;
+  const avgG1Price = g1SoldNets > 0 ? g1Revenue / g1SoldNets : 0;
 
   const g2Sales = batchSales.filter((s) => s.grade === 'GRADE_2');
   const g2SoldNets = g2Sales.reduce((sum, s) => sum + s.quantityNets, 0);
   const g2Revenue = g2Sales.reduce((sum, s) => sum + s.totalAmount, 0);
-  const avgG2Price = g2SoldNets > 0 ? g2Revenue / g2SoldNets : 1200;
+  const avgG2Price = g2SoldNets > 0 ? g2Revenue / g2SoldNets : 0;
 
   const totalSoldNets = g1SoldNets + g2SoldNets;
 
@@ -164,7 +195,9 @@ export const MasterBatchLedgerReceipt: React.FC<MasterBatchLedgerReceiptProps> =
     .filter((s) => s.paymentMethod === 'CREDIT')
     .reduce((sum, s) => sum + s.totalAmount, 0);
 
-  const repaidCreditTotal = creditRepayments.reduce((sum, r) => sum + r.amountPaid, 0);
+  const repaidCreditTotal = creditRepayments
+    .filter((r) => r.batchId === currentBatch.id)
+    .reduce((sum, r) => sum + r.amountPaid, 0);
 
   // Total cash & m-pesa realized into store
   const totalRealizedInflows = cashSalesTotal + mpesaSalesTotal + repaidCreditTotal;
@@ -235,604 +268,451 @@ export const MasterBatchLedgerReceipt: React.FC<MasterBatchLedgerReceiptProps> =
     <View style={[styles.wrapper, isDarkMode && styles.wrapperDark]}>
       {/* Title & Receipt Container */}
       <View style={[styles.receiptPaper, isDarkMode && styles.receiptPaperDark]}>
-        {/* Serrated Top Edge Effect */}
-        <View style={styles.serratedEdge}>
-          <Text style={styles.serratedText}>- - - - - - - - - - - - - - - - - - - - - - - - - - - -</Text>
-        </View>
-
         {/* Master Account Header */}
         <View style={styles.receiptHeader}>
-          <View style={[styles.masterPill, isDarkMode && { backgroundColor: '#164E63', borderColor: '#0891B2' }]}>
-            <Ionicons name="shield-checkmark" size={13} color={isDarkMode ? '#38BDF8' : '#0891B2'} />
-            <Text style={[styles.masterPillText, isDarkMode && { color: '#E0F2FE' }]}>MASTER ACCOUNT BOOKKEEPING</Text>
-          </View>
           <Text style={[styles.storeTitle, { fontFamily: monospaceFont }, isDarkMode && { color: '#F8FAFC' }]}>
-            {(storeName || 'NKACE ENTERPRISE').toUpperCase()}
+            The Gem
           </Text>
-          <Text style={[styles.marketSub, { fontFamily: monospaceFont }, isDarkMode && { color: '#94A3B8' }]}>
-            WAKULIMA WHOLESALE MARKET • NAIROBI
-          </Text>
-          <Text style={[styles.receiptSubtext, { fontFamily: monospaceFont }, isDarkMode && { color: '#38BDF8' }]}>
-            STALL REGISTER • ADMIN: {effectiveAdmin.toUpperCase()}
-          </Text>
-          <Text style={[styles.receiptDate, { fontFamily: monospaceFont }, isDarkMode && { color: '#64748B' }]}>
+          <Text
+            style={[styles.receiptDate, { fontFamily: monospaceFont, fontSize: 10 }, isDarkMode && { color: '#CFE9EC' }]}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.75}
+          >
             BATCH #{currentBatch.batchNumber} • TRUCK: {currentBatch.truckPlate} • DAY {currentBatch.dayNumber} OF 4
           </Text>
         </View>
 
-        <Text style={[styles.dashedDivider, { fontFamily: monospaceFont }, isDarkMode && { color: '#334155' }]}>
-          ----------------------------------------
-        </Text>
-
-        {/* --- SIMPLIFIED OVERVIEW FOR NON-AUDITORS --- */}
-        <View style={[styles.quickOverviewCard, isDarkMode && { backgroundColor: '#0B1120', borderColor: '#1E293B' }]}>
+        {/* --- BATCH SUMMARY --- */}
+        <View style={[styles.quickOverviewCard, isDarkMode && styles.quickOverviewCardDark]}>
           <Text style={[styles.overviewTitle, { fontFamily: monospaceFont }, isDarkMode && { color: '#F8FAFC' }]}>
-            ★ CONSIGNMENT SUMMARY (MZIGO KWA UFUPI) ★
+            BATCH SUMMARY
           </Text>
 
-          <View style={styles.kpiRow}>
-            {/* Money In */}
-            <View style={[styles.kpiCard, { backgroundColor: isDarkMode ? '#052E16' : '#F0FDF4', borderColor: isDarkMode ? '#166534' : '#BBF7D0' }]}>
-              <View style={styles.kpiLabelRow}>
-                <Ionicons name="arrow-down-circle" size={14} color="#16A34A" />
-                <Text style={[styles.kpiHeaderLabel, { color: isDarkMode ? '#4ADE80' : '#166534' }]}>MONEY IN (MAUZO)</Text>
+          <View style={styles.summaryList}>
+            {/* Sales */}
+            <View style={[styles.summaryListRow, isDarkMode && styles.summaryListRowDark]}>
+              <View style={styles.summaryListLeft}>
+                <Ionicons name="arrow-down-circle" size={15} color={isDarkMode ? '#4ADE80' : '#16A34A'} />
+                <View>
+                  <Text style={[styles.summaryListLabel, isDarkMode && { color: '#F0FDFA' }]}>
+                    Sales
+                  </Text>
+                  <Text style={[styles.summaryListSub, isDarkMode && { color: '#CFE9EC' }]}>
+                    Cash Drawer + Till In Hand
+                  </Text>
+                </View>
               </View>
-              <Text style={[styles.kpiValueLarge, { color: isDarkMode ? '#4ADE80' : '#166534', fontFamily: monospaceFont }]}>
+              <Text style={[styles.summaryListValue, { color: isDarkMode ? '#4ADE80' : '#166534', fontFamily: monospaceFont }]}>
                 Ksh {totalRealizedInflows.toLocaleString()}
               </Text>
-              <Text style={[styles.kpiSubNotice, isDarkMode && { color: '#86EFAC' }]}>Cash Drawer + Till In Hand</Text>
             </View>
 
-            {/* Money Out */}
-            <View style={[styles.kpiCard, { backgroundColor: isDarkMode ? '#450A0A' : '#FEF2F2', borderColor: isDarkMode ? '#991B1B' : '#FECACA' }]}>
-              <View style={styles.kpiLabelRow}>
-                <Ionicons name="arrow-up-circle" size={14} color="#DC2626" />
-                <Text style={[styles.kpiHeaderLabel, { color: isDarkMode ? '#F87171' : '#991B1B' }]}>MONEY OUT (GHARAMA)</Text>
+            {/* Expenses */}
+            <View style={[styles.summaryListRow, isDarkMode && styles.summaryListRowDark]}>
+              <View style={styles.summaryListLeft}>
+                <Ionicons name="arrow-up-circle" size={15} color={isDarkMode ? '#F87171' : '#DC2626'} />
+                <View>
+                  <Text style={[styles.summaryListLabel, isDarkMode && { color: '#F0FDFA' }]}>
+                    Expenses
+                  </Text>
+                  <Text style={[styles.summaryListSub, isDarkMode && { color: '#CFE9EC' }]}>
+                    Sourcing + Overheads Paid
+                  </Text>
+                </View>
               </View>
-              <Text style={[styles.kpiValueLarge, { color: isDarkMode ? '#F87171' : '#991B1B', fontFamily: monospaceFont }]}>
+              <Text style={[styles.summaryListValue, { color: isDarkMode ? '#F87171' : '#991B1B', fontFamily: monospaceFont }]}>
                 Ksh {totalOutflows.toLocaleString()}
               </Text>
-              <Text style={[styles.kpiSubNotice, isDarkMode && { color: '#FCA5A5' }]}>Sourcing + Overheads Paid</Text>
-            </View>
-          </View>
-
-          <View style={[styles.kpiRow, { marginTop: 8 }]}>
-            {/* Projected Profit */}
-            <View
-              style={[
-                styles.kpiCard,
-                {
-                  backgroundColor: projectedFinalNetProfit >= 0 ? (isDarkMode ? '#083344' : '#ECFEFF') : (isDarkMode ? '#451A03' : '#FFFBEB'),
-                  borderColor: projectedFinalNetProfit >= 0 ? (isDarkMode ? '#0891B2' : '#A5F3FC') : (isDarkMode ? '#B45309' : '#FDE68A'),
-                },
-              ]}
-            >
-              <View style={styles.kpiLabelRow}>
-                <Ionicons
-                  name={projectedFinalNetProfit >= 0 ? 'wallet' : 'warning'}
-                  size={14}
-                  color={projectedFinalNetProfit >= 0 ? '#0891B2' : '#D97706'}
-                />
-                <Text
-                  style={[
-                    styles.kpiHeaderLabel,
-                    { color: projectedFinalNetProfit >= 0 ? (isDarkMode ? '#38BDF8' : '#0E7490') : (isDarkMode ? '#FBBF24' : '#B45309') },
-                  ]}
-                >
-                  EST. PROFIT (FAIDA)
-                </Text>
-              </View>
-              <Text
-                style={[
-                  styles.kpiValueLarge,
-                  {
-                    color: projectedFinalNetProfit >= 0 ? (isDarkMode ? '#38BDF8' : '#0E7490') : (isDarkMode ? '#FBBF24' : '#B45309'),
-                    fontFamily: monospaceFont,
-                  },
-                ]}
-              >
-                {projectedFinalNetProfit >= 0 ? '+' : ''}Ksh {projectedFinalNetProfit.toLocaleString()}
-              </Text>
-              <Text style={[styles.kpiSubNotice, isDarkMode && { color: '#94A3B8' }]}>
-                {projectedRoi.toFixed(0)}% ROI • Ksh {profitPerNet.toFixed(0)}/net
-              </Text>
             </View>
 
-            {/* Stock Left */}
-            <View style={[styles.kpiCard, { backgroundColor: isDarkMode ? '#0F172A' : '#F8FAFC', borderColor: isDarkMode ? '#334155' : '#E2E8F0' }]}>
-              <View style={styles.kpiLabelRow}>
-                <Ionicons name="cube" size={14} color="#0891B2" />
-                <Text style={[styles.kpiHeaderLabel, { color: isDarkMode ? '#94A3B8' : '#334155' }]}>NETS LEFT (ZIMEBAKI)</Text>
+            {/* Nets Left */}
+            <View style={[styles.summaryListRow, { borderBottomWidth: 0, paddingBottom: 0 }]}>
+              <View style={styles.summaryListLeft}>
+                <Ionicons name="cube" size={15} color={isDarkMode ? '#7DD3FC' : '#0891B2'} />
+                <View>
+                  <Text style={[styles.summaryListLabel, isDarkMode && { color: '#F0FDFA' }]}>
+                    Nets Left
+                  </Text>
+                  <Text style={[styles.summaryListSub, isDarkMode && { color: '#CFE9EC' }]}>
+                    Sold {totalSoldNets} of {totalNets} nets
+                  </Text>
+                </View>
               </View>
-              <Text style={[styles.kpiValueLarge, { color: isDarkMode ? '#F8FAFC' : '#0F172A', fontFamily: monospaceFont }]}>
+              <Text style={[styles.summaryListValue, { color: isDarkMode ? '#FFFFFF' : '#0F172A', fontFamily: monospaceFont }]}>
                 {totalRemainingNets} NETS
               </Text>
-              <Text style={[styles.kpiSubNotice, isDarkMode && { color: '#64748B' }]}>
-                Sold {totalSoldNets} of {totalNets} nets
-              </Text>
             </View>
-          </View>
-
-          {/* Quick Progress Indicator */}
-          <View style={[styles.miniProgressRow, isDarkMode && { backgroundColor: '#0F172A', borderColor: '#1E293B' }]}>
-            <Text style={[styles.miniProgressText, { fontFamily: monospaceFont }, isDarkMode && { color: '#38BDF8' }]}>
-              Status: {currentNetPosition >= 0 ? 'Surplus (+Ksh ' + currentNetPosition.toLocaleString() + ')' : 'Recovering Capital (' + costRecoveryPercent + '% cleared)'}
-            </Text>
           </View>
         </View>
 
-        <Text style={[styles.dashedDivider, { fontFamily: monospaceFont }, isDarkMode && { color: '#334155' }]}>
-          ----------------------------------------
-        </Text>
-
-        {/* Section 1: Inbound Purchasing Expenses */}
-        <View style={styles.receiptSection}>
-          <TouchableOpacity
-            style={styles.accordionHeaderBtn}
-            onPress={() => setShowSourcingDetails(!showSourcingDetails)}
-            activeOpacity={0.7}
-          >
-            <View style={{ flex: 1 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Ionicons name="car-outline" size={15} color="#0891B2" />
-                <Text style={[styles.sectionTitle, { fontFamily: monospaceFont, marginBottom: 0 }]}>
-                  1. SOURCING & INBOUND
+        {/* Merged Sourcing & Market Expenses Container */}
+        <View style={[styles.expensesGroupCard, isDarkMode && styles.expensesGroupCardDark]}>
+          {/* Section 1: Sourcing Expenses */}
+          <View style={styles.receiptSection}>
+            <TouchableOpacity
+              style={styles.accordionHeaderBtn}
+              onPress={() => setShowSourcingDetails(!showSourcingDetails)}
+              activeOpacity={0.7}
+            >
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.sectionTitle, { fontFamily: monospaceFont, marginBottom: 0 }, isDarkMode && { color: '#FFFFFF' }]}>
+                  1. SOURCING EXPENSES
+                </Text>
+                <Text style={[styles.accordionSub, isDarkMode && { color: '#CFE9EC' }]}>
+                  Subtotal: Ksh {totalInboundSourcing.toLocaleString()}
                 </Text>
               </View>
-              <Text style={styles.accordionSub}>
-                Subtotal: Ksh {totalInboundSourcing.toLocaleString()}
-              </Text>
-            </View>
-            <View style={styles.accordionRightRow}>
-              <TouchableOpacity
-                style={styles.editCostsBtn}
-                onPress={handleOpenEditCosts}
-                activeOpacity={0.8}
-              >
-                <Ionicons name="create-outline" size={12} color="#0891B2" />
-                <Text style={styles.editCostsBtnText}>Edit</Text>
-              </TouchableOpacity>
-              <View style={styles.togglePill}>
-                <Text style={styles.togglePillText}>
-                  {showSourcingDetails ? 'Hide ▴' : 'Show Details ▾'}
-                </Text>
-              </View>
-            </View>
-          </TouchableOpacity>
-
-          {showSourcingDetails && (
-            <View style={styles.accordionBody}>
-              <View style={styles.lineItem}>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.itemLabel, { fontFamily: monospaceFont }]}>
-                    Produce ({totalNets} nets × {avgWeight}kg @ Ksh {costs.pricePerKg}/kg)
-                  </Text>
-                  <Text style={styles.subItemNote}>Bulk farm field sourcing cost ({totalKg.toLocaleString()} kg)</Text>
-                </View>
-                <Text style={[styles.itemAmount, { fontFamily: monospaceFont }]}>
-                  Ksh {produceCost.toLocaleString()}
-                </Text>
-              </View>
-
-              <View style={styles.lineItem}>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.itemLabel, { fontFamily: monospaceFont }]}>
-                    Packaging Sacks ({totalNets} nets @ Ksh {costs.packagingNetUnitCost}/net)
-                  </Text>
-                  <Text style={styles.subItemNote}>Durable red mesh onion sacks</Text>
-                </View>
-                <Text style={[styles.itemAmount, { fontFamily: monospaceFont }]}>
-                  Ksh {packagingCost.toLocaleString()}
-                </Text>
-              </View>
-
-              <View style={styles.lineItem}>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.itemLabel, { fontFamily: monospaceFont }]}>
-                    Incurred Day 1 NCC County Cess
-                  </Text>
-                  <Text style={styles.subItemNote}>Official barcode receipt ({currentBatch.nccDeclaredNets} nets counted)</Text>
-                </View>
-                <Text style={[styles.itemAmount, { fontFamily: monospaceFont }]}>
-                  Ksh {cessPaid.toLocaleString()}
-                </Text>
-              </View>
-
-              <View style={styles.lineItem}>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.itemLabel, { fontFamily: monospaceFont }]}>
-                    Long-Distance Haulage / Transport
-                  </Text>
-                  <Text style={styles.subItemNote}>Flat truck haulage freight into Nairobi</Text>
-                </View>
-                <Text style={[styles.itemAmount, { fontFamily: monospaceFont }]}>
-                  Ksh {transportCost.toLocaleString()}
-                </Text>
-              </View>
-
-              <View style={styles.lineItem}>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.itemLabel, { fontFamily: monospaceFont }]}>
-                    Farm Broker Sourcing Commission
-                  </Text>
-                  <Text style={styles.subItemNote}>Origin liaison & field negotiation fee</Text>
-                </View>
-                <Text style={[styles.itemAmount, { fontFamily: monospaceFont }]}>
-                  Ksh {brokerCost.toLocaleString()}
-                </Text>
-              </View>
-
-              <View style={styles.lineItem}>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.itemLabel, { fontFamily: monospaceFont }]}>
-                    Farm Sorters & Loaders
-                  </Text>
-                  <Text style={styles.subItemNote}>Manual field grading & truck loading labor</Text>
-                </View>
-                <Text style={[styles.itemAmount, { fontFamily: monospaceFont }]}>
-                  Ksh {farmLaborCost.toLocaleString()}
-                </Text>
-              </View>
-
-              <View style={styles.subtotalRow}>
-                <Text style={[styles.subtotalLabel, { fontFamily: monospaceFont }]}>
-                  SUBTOTAL INBOUND SOURCING
-                </Text>
-                <Text style={[styles.subtotalAmount, { fontFamily: monospaceFont }]}>
-                  Ksh {totalInboundSourcing.toLocaleString()}
-                </Text>
-              </View>
-            </View>
-          )}
-        </View>
-
-        <Text style={[styles.dashedDivider, { fontFamily: monospaceFont }]}>
-          ----------------------------------------
-        </Text>
-
-        {/* Section 2: Market Overheads */}
-        <View style={styles.receiptSection}>
-          <TouchableOpacity
-            style={styles.accordionHeaderBtn}
-            onPress={() => setShowOverheadsDetails(!showOverheadsDetails)}
-            activeOpacity={0.7}
-          >
-            <View style={{ flex: 1 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Ionicons name="storefront-outline" size={15} color="#0891B2" />
-                <Text style={[styles.sectionTitle, { fontFamily: monospaceFont, marginBottom: 0 }]}>
-                  2. MARKET OVERHEADS
-                </Text>
-              </View>
-              <Text style={styles.accordionSub}>
-                Subtotal: Ksh {totalMarketOverheads.toLocaleString()}
-              </Text>
-            </View>
-            <View style={styles.togglePill}>
-              <Text style={styles.togglePillText}>
-                {showOverheadsDetails ? 'Hide ▴' : 'Show Details ▾'}
-              </Text>
-            </View>
-          </TouchableOpacity>
-
-          {showOverheadsDetails && (
-            <View style={styles.accordionBody}>
-              <View style={styles.lineItem}>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.itemLabel, { fontFamily: monospaceFont }]}>
-                    Daily Demurrage (Day {currentBatch.dayNumber} of 4)
-                  </Text>
-                  <Text style={styles.subItemNote}>
-                    {currentBatch.dayNumber === 1
-                      ? 'Day 1 covered under initial Cess'
-                      : `Days 2–${currentBatch.dayNumber}: flat Ksh 1,000/day`}
+              <View style={styles.accordionRightRow}>
+                <TouchableOpacity
+                  style={[styles.editCostsBtn, isDarkMode && { backgroundColor: '#1B4F55', borderColor: '#7AB5BC' }]}
+                  onPress={handleOpenEditCosts}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="create-outline" size={12} color={isDarkMode ? '#7DD3FC' : '#0891B2'} />
+                  <Text style={[styles.editCostsBtnText, isDarkMode && { color: '#7DD3FC' }]}>Edit</Text>
+                </TouchableOpacity>
+                <View style={[styles.togglePill, isDarkMode && { backgroundColor: '#1B4F55', borderColor: '#7AB5BC', borderWidth: 1 }]}>
+                  <Text style={[styles.togglePillText, isDarkMode && { color: '#E0F2FE' }]}>
+                    {showSourcingDetails ? 'Hide ▴' : 'Show Details ▾'}
                   </Text>
                 </View>
-                <Text style={[styles.itemAmount, { fontFamily: monospaceFont }]}>
-                  Ksh {demurrageCost.toLocaleString()}
-                </Text>
               </View>
+            </TouchableOpacity>
 
-              <View style={styles.lineItem}>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.itemLabel, { fontFamily: monospaceFont }]}>
-                    Night Security Watchman
-                  </Text>
-                  <Text style={styles.subItemNote}>Ksh 100/night overnight custody</Text>
-                </View>
-                <Text style={[styles.itemAmount, { fontFamily: monospaceFont }]}>
-                  Ksh {watchmanExpense.toLocaleString()}
-                </Text>
-              </View>
-
-              <View style={styles.lineItem}>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.itemLabel, { fontFamily: monospaceFont }]}>
-                    Sweeping & Sanitation Fee
-                  </Text>
-                  <Text style={styles.subItemNote}>Market bay daily hygiene maintenance</Text>
-                </View>
-                <Text style={[styles.itemAmount, { fontFamily: monospaceFont }]}>
-                  Ksh {sanitationExpense.toLocaleString()}
-                </Text>
-              </View>
-
-              <View style={styles.lineItem}>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.itemLabel, { fontFamily: monospaceFont }]}>
-                    Market Offloaders (Casual Labor)
-                  </Text>
-                  <Text style={styles.subItemNote}>Discharged offloading workers</Text>
-                </View>
-                <Text style={[styles.itemAmount, { fontFamily: monospaceFont }]}>
-                  Ksh {casualLaborExpense.toLocaleString()}
-                </Text>
-              </View>
-
-              {otherExpenses > 0 && (
+            {showSourcingDetails && (
+              <View style={styles.accordionBody}>
                 <View style={styles.lineItem}>
                   <View style={{ flex: 1 }}>
-                    <Text style={[styles.itemLabel, { fontFamily: monospaceFont }]}>
-                      Other Miscellaneous Overheads
+                    <Text style={[styles.itemLabel, { fontFamily: monospaceFont }, isDarkMode && { color: '#F0FDFA' }]}>
+                      Produce ({totalNets} nets × {avgWeight}kg @ Ksh {costs.pricePerKg}/kg)
                     </Text>
                   </View>
-                  <Text style={[styles.itemAmount, { fontFamily: monospaceFont }]}>
-                    Ksh {otherExpenses.toLocaleString()}
+                  <Text style={[styles.itemAmount, { fontFamily: monospaceFont }, isDarkMode && { color: '#FFFFFF' }]}>
+                    Ksh {produceCost.toLocaleString()}
                   </Text>
                 </View>
-              )}
 
-              <View style={styles.subtotalRow}>
-                <Text style={[styles.subtotalLabel, { fontFamily: monospaceFont }]}>
-                  SUBTOTAL MARKET OVERHEADS
+                <View style={styles.lineItem}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.itemLabel, { fontFamily: monospaceFont }, isDarkMode && { color: '#F0FDFA' }]}>
+                      Packaging Sacks ({totalNets} nets @ Ksh {costs.packagingNetUnitCost}/net)
+                    </Text>
+                  </View>
+                  <Text style={[styles.itemAmount, { fontFamily: monospaceFont }, isDarkMode && { color: '#FFFFFF' }]}>
+                    Ksh {packagingCost.toLocaleString()}
+                  </Text>
+                </View>
+
+                <View style={styles.lineItem}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.itemLabel, { fontFamily: monospaceFont }, isDarkMode && { color: '#F0FDFA' }]}>
+                      NCC County Cess
+                    </Text>
+                  </View>
+                  <Text style={[styles.itemAmount, { fontFamily: monospaceFont }, isDarkMode && { color: '#FFFFFF' }]}>
+                    Ksh {cessPaid.toLocaleString()}
+                  </Text>
+                </View>
+
+                <View style={styles.lineItem}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.itemLabel, { fontFamily: monospaceFont }, isDarkMode && { color: '#F0FDFA' }]}>
+                      Transport
+                    </Text>
+                  </View>
+                  <Text style={[styles.itemAmount, { fontFamily: monospaceFont }, isDarkMode && { color: '#FFFFFF' }]}>
+                    Ksh {transportCost.toLocaleString()}
+                  </Text>
+                </View>
+
+                <View style={styles.lineItem}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.itemLabel, { fontFamily: monospaceFont }, isDarkMode && { color: '#F0FDFA' }]}>
+                      Broker Commission
+                    </Text>
+                  </View>
+                  <Text style={[styles.itemAmount, { fontFamily: monospaceFont }, isDarkMode && { color: '#FFFFFF' }]}>
+                    Ksh {brokerCost.toLocaleString()}
+                  </Text>
+                </View>
+
+                <View style={styles.lineItem}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.itemLabel, { fontFamily: monospaceFont }, isDarkMode && { color: '#F0FDFA' }]}>
+                      Loaders
+                    </Text>
+                  </View>
+                  <Text style={[styles.itemAmount, { fontFamily: monospaceFont }, isDarkMode && { color: '#FFFFFF' }]}>
+                    Ksh {farmLaborCost.toLocaleString()}
+                  </Text>
+                </View>
+
+                <View style={styles.subtotalRow}>
+                  <Text style={[styles.subtotalLabel, { fontFamily: monospaceFont }, isDarkMode && { color: '#FFFFFF' }]}>
+                    SUBTOTAL SOURCING EXPENSES
+                  </Text>
+                  <Text style={[styles.subtotalAmount, { fontFamily: monospaceFont }, isDarkMode && { color: '#FFFFFF' }]}>
+                    Ksh {totalInboundSourcing.toLocaleString()}
+                  </Text>
+                </View>
+              </View>
+            )}
+          </View>
+
+          {/* Section 2: Market Expenses */}
+          <View style={[styles.receiptSection, styles.expensesSectionDivider, isDarkMode && styles.expensesSectionDividerDark]}>
+            <TouchableOpacity
+              style={styles.accordionHeaderBtn}
+              onPress={() => setShowOverheadsDetails(!showOverheadsDetails)}
+              activeOpacity={0.7}
+            >
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.sectionTitle, { fontFamily: monospaceFont, marginBottom: 0 }, isDarkMode && { color: '#FFFFFF' }]}>
+                  2. MARKET EXPENSES
                 </Text>
-                <Text style={[styles.subtotalAmount, { fontFamily: monospaceFont }]}>
-                  Ksh {totalMarketOverheads.toLocaleString()}
+                <Text style={[styles.accordionSub, isDarkMode && { color: '#CFE9EC' }]}>
+                  Subtotal: Ksh {totalMarketOverheads.toLocaleString()}
                 </Text>
               </View>
+              <View style={styles.accordionRightRow}>
+                {onEditMarketExpenses && (
+                  <TouchableOpacity
+                    style={[
+                      styles.editCostsBtn,
+                      isDarkMode && { backgroundColor: '#1B4F55', borderColor: '#7AB5BC' },
+                      Platform.OS === 'web' && ({ cursor: 'pointer' } as any),
+                    ]}
+                    onPress={onEditMarketExpenses}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="create-outline" size={12} color={isDarkMode ? '#7DD3FC' : '#0891B2'} />
+                    <Text style={[styles.editCostsBtnText, isDarkMode && { color: '#7DD3FC' }]}>Edit</Text>
+                  </TouchableOpacity>
+                )}
+                <View style={[styles.togglePill, isDarkMode && { backgroundColor: '#1B4F55', borderColor: '#7AB5BC', borderWidth: 1 }]}>
+                  <Text style={[styles.togglePillText, isDarkMode && { color: '#E0F2FE' }]}>
+                    {showOverheadsDetails ? 'Hide ▴' : 'Show Details ▾'}
+                  </Text>
+                </View>
+              </View>
+            </TouchableOpacity>
+
+            {showOverheadsDetails && (
+              <View style={styles.accordionBody}>
+                <View style={styles.lineItem}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.itemLabel, { fontFamily: monospaceFont }, isDarkMode && { color: '#F0FDFA' }]}>
+                      NCC Daily Expense
+                    </Text>
+                  </View>
+                  <Text style={[styles.itemAmount, { fontFamily: monospaceFont }, isDarkMode && { color: '#FFFFFF' }]}>
+                    Ksh {demurrageCost.toLocaleString()}
+                  </Text>
+                </View>
+
+                <View style={styles.lineItem}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.itemLabel, { fontFamily: monospaceFont }, isDarkMode && { color: '#F0FDFA' }]}>
+                      Security Watchman
+                    </Text>
+                  </View>
+                  <Text style={[styles.itemAmount, { fontFamily: monospaceFont }, isDarkMode && { color: '#FFFFFF' }]}>
+                    Ksh {watchmanExpense.toLocaleString()}
+                  </Text>
+                </View>
+
+                <View style={styles.lineItem}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.itemLabel, { fontFamily: monospaceFont }, isDarkMode && { color: '#F0FDFA' }]}>
+                      Sweeping & Sanitation
+                    </Text>
+                  </View>
+                  <Text style={[styles.itemAmount, { fontFamily: monospaceFont }, isDarkMode && { color: '#FFFFFF' }]}>
+                    Ksh {sanitationExpense.toLocaleString()}
+                  </Text>
+                </View>
+
+                <View style={styles.lineItem}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.itemLabel, { fontFamily: monospaceFont }, isDarkMode && { color: '#F0FDFA' }]}>
+                      Offloaders
+                    </Text>
+                  </View>
+                  <Text style={[styles.itemAmount, { fontFamily: monospaceFont }, isDarkMode && { color: '#FFFFFF' }]}>
+                    Ksh {casualLaborExpense.toLocaleString()}
+                  </Text>
+                </View>
+
+                {otherExpenseItems.map((exp) => (
+                  <View key={exp.id} style={styles.lineItem}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.itemLabel, { fontFamily: monospaceFont }, isDarkMode && { color: '#F0FDFA' }]}>
+                        {exp.description}
+                      </Text>
+                    </View>
+                    <Text style={[styles.itemAmount, { fontFamily: monospaceFont }, isDarkMode && { color: '#FFFFFF' }]}>
+                      Ksh {exp.amount.toLocaleString()}
+                    </Text>
+                  </View>
+                ))}
+
+                <View style={styles.subtotalRow}>
+                  <Text style={[styles.subtotalLabel, { fontFamily: monospaceFont }, isDarkMode && { color: '#FFFFFF' }]}>
+                    SUBTOTAL MARKET EXPENSES
+                  </Text>
+                  <Text style={[styles.subtotalAmount, { fontFamily: monospaceFont }, isDarkMode && { color: '#FFFFFF' }]}>
+                    Ksh {totalMarketOverheads.toLocaleString()}
+                  </Text>
+                </View>
+              </View>
+            )}
+          </View>
+
+          {/* Total Expenses Summary Row */}
+          <View style={[styles.totalOutflowsRow, styles.expensesSectionDivider, isDarkMode && styles.expensesSectionDividerDark]}>
+            <View>
+              <Text style={[styles.grandLabel, { fontFamily: monospaceFont }, isDarkMode && { color: '#FFFFFF' }]}>
+                TOTAL EXPENSES
+              </Text>
+              <Text style={[styles.subGrandLabel, isDarkMode && { color: '#CFE9EC' }]}>
+                Effective Landed Cost: Ksh {averageCostPerNet.toFixed(1)} / net
+              </Text>
             </View>
-          )}
-        </View>
-
-        <Text style={[styles.dashedDivider, { fontFamily: monospaceFont }]}>
-          ========================================
-        </Text>
-
-        {/* Total Outflows Summary Card */}
-        <View style={styles.totalOutflowsRow}>
-          <View>
-            <Text style={[styles.grandLabel, { fontFamily: monospaceFont }]}>
-              TOTAL INCURRED OUTFLOWS
-            </Text>
-            <Text style={styles.subGrandLabel}>
-              Effective Landed Cost: Ksh {averageCostPerNet.toFixed(1)} / net
+            <Text style={[styles.grandOutflowAmount, { fontFamily: monospaceFont }, isDarkMode && { color: '#FCA5A5' }]}>
+              -Ksh {totalOutflows.toLocaleString()}
             </Text>
           </View>
-          <Text style={[styles.grandOutflowAmount, { fontFamily: monospaceFont }]}>
-            -Ksh {totalOutflows.toLocaleString()}
-          </Text>
         </View>
-
-        <Text style={[styles.dashedDivider, { fontFamily: monospaceFont }]}>
-          ----------------------------------------
-        </Text>
 
         {/* Section 3: Real-Time Sales Inflows */}
-        <View style={styles.receiptSection}>
-          <TouchableOpacity
-            style={styles.accordionHeaderBtn}
-            onPress={() => setShowSalesDetails(!showSalesDetails)}
-            activeOpacity={0.7}
-          >
-            <View style={{ flex: 1 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Ionicons name="cash-outline" size={15} color="#059669" />
-                <Text style={[styles.sectionTitle, { fontFamily: monospaceFont, marginBottom: 0 }]}>
-                  3. SALES & CASH DRAWER
+        <View style={[styles.expensesGroupCard, isDarkMode && styles.expensesGroupCardDark]}>
+          <View style={styles.receiptSection}>
+            <TouchableOpacity
+              style={styles.accordionHeaderBtn}
+              onPress={() => setShowSalesDetails(!showSalesDetails)}
+              activeOpacity={0.7}
+            >
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.sectionTitle, { fontFamily: monospaceFont, marginBottom: 0 }, isDarkMode && { color: '#FFFFFF' }]}>
+                  3. SALES
                 </Text>
               </View>
-              <Text style={styles.accordionSub}>
-                Realized Inflows: +Ksh {totalRealizedInflows.toLocaleString()}
-              </Text>
-            </View>
-            <View style={styles.togglePill}>
-              <Text style={styles.togglePillText}>
-                {showSalesDetails ? 'Hide ▴' : 'Show Details ▾'}
-              </Text>
-            </View>
-          </TouchableOpacity>
-
-          {showSalesDetails && (
-            <View style={styles.accordionBody}>
-              <View style={styles.lineItem}>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.itemLabel, { fontFamily: monospaceFont }]}>
-                    Grade 1 Nets Sold ({g1SoldNets} of {currentBatch.initialGrade1Nets} nets)
-                  </Text>
-                  <Text style={styles.subItemNote}>Avg wholesale realized: Ksh {avgG1Price.toFixed(0)}/net</Text>
-                </View>
-                <Text style={[styles.itemAmountInflow, { fontFamily: monospaceFont }]}>
-                  +Ksh {g1Revenue.toLocaleString()}
+              <View style={[styles.togglePill, isDarkMode && { backgroundColor: '#1B4F55', borderColor: '#7AB5BC', borderWidth: 1 }]}>
+                <Text style={[styles.togglePillText, isDarkMode && { color: '#E0F2FE' }]}>
+                  {showSalesDetails ? 'Hide ▴' : 'Show Details ▾'}
                 </Text>
               </View>
+            </TouchableOpacity>
 
-              <View style={styles.lineItem}>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.itemLabel, { fontFamily: monospaceFont }]}>
-                    Grade 2 Nets Sold ({g2SoldNets} of {currentBatch.initialGrade2Nets} nets)
-                  </Text>
-                  <Text style={styles.subItemNote}>Avg wholesale realized: Ksh {avgG2Price.toFixed(0)}/net</Text>
-                </View>
-                <Text style={[styles.itemAmountInflow, { fontFamily: monospaceFont }]}>
-                  +Ksh {g2Revenue.toLocaleString()}
-                </Text>
-              </View>
-
-              {/* Collection Channels */}
-              <View style={styles.channelsBox}>
-                <Text style={[styles.channelsHeading, { fontFamily: monospaceFont }]}>
-                  COLLECTION CHANNELS:
-                </Text>
-                <Text style={[styles.channelItem, { fontFamily: monospaceFont }]}>
-                  • Cash Drawer In Hand : Ksh {cashSalesTotal.toLocaleString()}
-                </Text>
-                <Text style={[styles.channelItem, { fontFamily: monospaceFont }]}>
-                  • M-Pesa Buy Goods Till: Ksh {mpesaSalesTotal.toLocaleString()}
-                </Text>
-                {repaidCreditTotal > 0 && (
-                  <Text style={[styles.channelItem, { fontFamily: monospaceFont }]}>
-                    • Debtor Repayments    : Ksh {repaidCreditTotal.toLocaleString()}
-                  </Text>
-                )}
-                {creditSalesTotal > 0 && (
-                  <Text style={[styles.channelItemPending, { fontFamily: monospaceFont }]}>
-                    • Active Debts (Unpaid): Ksh {creditSalesTotal.toLocaleString()}
-                  </Text>
-                )}
-              </View>
-
-              <View style={styles.subtotalRow}>
-                <Text style={[styles.subtotalLabel, { fontFamily: monospaceFont }]}>
-                  TOTAL REALIZED INFLOWS
-                </Text>
-                <Text style={[styles.subtotalAmountInflow, { fontFamily: monospaceFont }]}>
-                  +Ksh {totalRealizedInflows.toLocaleString()}
-                </Text>
-              </View>
-            </View>
-          )}
-        </View>
-
-        <Text style={[styles.dashedDivider, { fontFamily: monospaceFont }]}>
-          ========================================
-        </Text>
-
-        {/* Section 4: Real-Time Balancing & Batch Feedback */}
-        <View style={styles.balancingSection}>
-          {/* Actionable Feedback Banner Always Visible */}
-          <View
-            style={[
-              styles.feedbackBanner,
-              projectedFinalNetProfit >= 0 ? styles.feedbackBannerSuccess : styles.feedbackBannerWarning,
-            ]}
-          >
-            <Ionicons
-              name={projectedFinalNetProfit >= 0 ? 'trending-up' : 'alert-circle'}
-              size={18}
-              color={projectedFinalNetProfit >= 0 ? '#059669' : '#D97706'}
-            />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.feedbackBannerTitle}>
-                {projectedFinalNetProfit >= 0
-                  ? currentNetPosition >= 0
-                    ? '🎉 FULL RECOVERY ACHIEVED — RUNNING SURPLUS'
-                    : '📈 PROFITABLE BATCH TRAJECTORY'
-                  : '⚠️ MARGIN COMPRESSION ALERT'}
-              </Text>
-              <Text style={styles.feedbackBannerText}>
-                {currentNetPosition >= 0
-                  ? `All sourcing and overhead expenses fully cleared. All remaining ${totalRemainingNets} nets represent 100% net surplus.`
-                  : `Batch has recovered ${costRecoveryPercent}% of capital. Selling the remaining ${totalRemainingNets} nets at target rates will secure Ksh ${projectedFinalNetProfit.toLocaleString()} net profit.`}
-              </Text>
-            </View>
-          </View>
-
-          {/* Toggle for Deep Audit Calculations */}
-          <TouchableOpacity
-            style={styles.accordionHeaderBtn}
-            onPress={() => setShowBalancingDetails(!showBalancingDetails)}
-            activeOpacity={0.7}
-          >
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.sectionTitle, { fontFamily: monospaceFont, marginBottom: 0 }]}>
-                4. AUDIT VALUATION & PROJECTIONS
-              </Text>
-              <Text style={styles.accordionSub}>
-                Net Position: {currentNetPosition >= 0 ? '+' : ''}Ksh {currentNetPosition.toLocaleString()}
-              </Text>
-            </View>
-            <View style={styles.togglePill}>
-              <Text style={styles.togglePillText}>
-                {showBalancingDetails ? 'Hide ▴' : 'Show Details ▾'}
-              </Text>
-            </View>
-          </TouchableOpacity>
-
-          {showBalancingDetails && (
-            <View style={styles.accordionBody}>
-              <View style={styles.balanceStatusRow}>
-                <Text style={[styles.balanceStatusLabel, { fontFamily: monospaceFont }]}>
-                  CURRENT NET POSITION (TO DATE):
-                </Text>
-                <Text
-                  style={[
-                    styles.balanceStatusValue,
-                    {
-                      fontFamily: monospaceFont,
-                      color: currentNetPosition >= 0 ? '#059669' : '#DC2626',
-                    },
-                  ]}
-                >
-                  {currentNetPosition >= 0 ? '+' : ''}Ksh {currentNetPosition.toLocaleString()}
-                </Text>
-              </View>
-
-              <View style={styles.progressStatusRow}>
-                <Text style={[styles.progressStatusText, { fontFamily: monospaceFont }]}>
-                  Cost Recovery: {costRecoveryPercent}% • Sold: {totalSoldNets}/{totalNets} nets (
-                  {totalRemainingNets} left)
-                </Text>
-              </View>
-
-              {/* Remaining Stock Valuation */}
-              <View style={styles.projectionBox}>
-                <View style={styles.projLine}>
-                  <Text style={[styles.projLabel, { fontFamily: monospaceFont }]}>
-                    Unsold Stock Valuation ({totalRemainingNets} nets):
-                  </Text>
-                  <Text style={[styles.projValue, { fontFamily: monospaceFont }]}>
-                    Ksh {projectedRemainingRevenue.toLocaleString()}
+            {showSalesDetails && (
+              <View style={styles.accordionBody}>
+                <View style={styles.lineItem}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.itemLabel, { fontFamily: monospaceFont }, isDarkMode && { color: '#F0FDFA' }]}>
+                      Grade 1 Nets Sold ({g1SoldNets} of {currentBatch.initialGrade1Nets} nets)
+                    </Text>
+                    <Text style={[styles.subItemNote, isDarkMode && { color: '#CFE9EC' }]}>Avg wholesale realized: Ksh {avgG1Price.toFixed(0)}/net</Text>
+                  </View>
+                  <Text style={[styles.itemAmountInflow, { fontFamily: monospaceFont }, isDarkMode && { color: '#6EE7B7' }]}>
+                    +Ksh {g1Revenue.toLocaleString()}
                   </Text>
                 </View>
-                <View style={styles.projLine}>
-                  <Text style={[styles.projLabelBold, { fontFamily: monospaceFont }]}>
-                    PROJECTED FULL CLEARANCE PROFIT:
+
+                <View style={styles.lineItem}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.itemLabel, { fontFamily: monospaceFont }, isDarkMode && { color: '#F0FDFA' }]}>
+                      Grade 2 Nets Sold ({g2SoldNets} of {currentBatch.initialGrade2Nets} nets)
+                    </Text>
+                    <Text style={[styles.subItemNote, isDarkMode && { color: '#CFE9EC' }]}>Avg wholesale realized: Ksh {avgG2Price.toFixed(0)}/net</Text>
+                  </View>
+                  <Text style={[styles.itemAmountInflow, { fontFamily: monospaceFont }, isDarkMode && { color: '#6EE7B7' }]}>
+                    +Ksh {g2Revenue.toLocaleString()}
                   </Text>
-                  <Text
+                </View>
+
+                {/* Collection Channels (Collapsible) */}
+                <View style={[styles.channelsBox, isDarkMode && styles.channelsBoxDark]}>
+                  <TouchableOpacity
+                    activeOpacity={0.75}
+                    onPress={() => setShowCollectionChannels((prev) => !prev)}
                     style={[
-                      styles.projValueBold,
-                      {
-                        fontFamily: monospaceFont,
-                        color: projectedFinalNetProfit >= 0 ? '#059669' : '#DC2626',
-                      },
+                      { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+                      Platform.OS === 'web' && ({ cursor: 'pointer' } as any),
                     ]}
                   >
-                    {projectedFinalNetProfit >= 0 ? '+' : ''}Ksh {projectedFinalNetProfit.toLocaleString()}
-                  </Text>
+                    <Text
+                      style={[
+                        styles.channelsHeading,
+                        !showCollectionChannels && { marginBottom: 0 },
+                        isDarkMode && { color: '#7DD3FC' },
+                      ]}
+                    >
+                      COLLECTION CHANNELS
+                    </Text>
+                    <Ionicons
+                      name={showCollectionChannels ? 'chevron-up' : 'chevron-down'}
+                      size={14}
+                      color={isDarkMode ? '#7DD3FC' : '#64748B'}
+                    />
+                  </TouchableOpacity>
+
+                  {showCollectionChannels && (
+                    <>
+                      <View style={[styles.channelRow, { paddingTop: 2 }, isDarkMode && styles.channelRowDark]}>
+                        <Text style={[styles.channelItemLabel, isDarkMode && { color: '#E2F5F7' }]}>
+                          Cash Drawer In Hand
+                        </Text>
+                        <Text style={[styles.channelItemValue, { fontFamily: monospaceFont }, isDarkMode && { color: '#F0FDFA' }]}>
+                          Ksh {cashSalesTotal.toLocaleString()}
+                        </Text>
+                      </View>
+
+                      <View style={[styles.channelRow, isDarkMode && styles.channelRowDark]}>
+                        <Text style={[styles.channelItemLabel, isDarkMode && { color: '#E2F5F7' }]}>
+                          M-Pesa Buy Goods Till
+                        </Text>
+                        <Text style={[styles.channelItemValue, { fontFamily: monospaceFont }, isDarkMode && { color: '#F0FDFA' }]}>
+                          Ksh {mpesaSalesTotal.toLocaleString()}
+                        </Text>
+                      </View>
+
+                      {repaidCreditTotal > 0 && (
+                        <View style={[styles.channelRow, isDarkMode && styles.channelRowDark]}>
+                          <Text style={[styles.channelItemLabel, isDarkMode && { color: '#E2F5F7' }]}>
+                            Debtor Repayments
+                          </Text>
+                          <Text style={[styles.channelItemValue, { fontFamily: monospaceFont }, isDarkMode && { color: '#F0FDFA' }]}>
+                            Ksh {repaidCreditTotal.toLocaleString()}
+                          </Text>
+                        </View>
+                      )}
+
+                      {creditSalesTotal > 0 && (
+                        <View style={[styles.channelRow, { borderBottomWidth: 0, paddingBottom: 0 }]}>
+                          <Text style={[styles.channelItemPending, isDarkMode && { color: '#FCD34D' }]}>
+                            Active Debts (Unpaid)
+                          </Text>
+                          <Text style={[styles.channelItemPendingValue, { fontFamily: monospaceFont }, isDarkMode && { color: '#FCD34D' }]}>
+                            Ksh {creditSalesTotal.toLocaleString()}
+                          </Text>
+                        </View>
+                      )}
+                    </>
+                  )}
                 </View>
-                <View style={styles.projLine}>
-                  <Text style={[styles.projLabel, { fontFamily: monospaceFont }]}>
-                    Expected Consignment ROI:
+
+                <View style={styles.subtotalRow}>
+                  <Text style={[styles.subtotalLabel, { fontFamily: monospaceFont }, isDarkMode && { color: '#FFFFFF' }]}>
+                    TOTAL SALES
                   </Text>
-                  <Text style={[styles.projValue, { fontFamily: monospaceFont }]}>
-                    {projectedRoi.toFixed(1)}% (Ksh {profitPerNet.toFixed(0)}/net profit)
+                  <Text style={[styles.subtotalAmountInflow, { fontFamily: monospaceFont }, isDarkMode && { color: '#6EE7B7' }]}>
+                    +Ksh {totalRealizedInflows.toLocaleString()}
                   </Text>
                 </View>
               </View>
-            </View>
-          )}
-        </View>
-
-        {/* Serrated Bottom Edge Effect */}
-        <View style={styles.serratedEdge}>
-          <Text style={styles.serratedText}>- - - - - - - - - - - - - - - - - - - - - - - - - - - -</Text>
-        </View>
-
-        {/* Stamp */}
-        <View style={[styles.stampBox, isDarkMode && { borderColor: '#334155', backgroundColor: '#0F172A' }]}>
-          <Text style={[styles.stampText, { fontFamily: monospaceFont }, isDarkMode && { color: '#38BDF8' }]}>
-            [ MASTER AUDIT RECORD • {storeName || 'NKACE ENTERPRISE'} • VERIFIED ]
-          </Text>
+            )}
+          </View>
         </View>
       </View>
 
@@ -846,29 +726,22 @@ export const MasterBatchLedgerReceipt: React.FC<MasterBatchLedgerReceiptProps> =
         <View style={styles.modalOverlay}>
           <View style={[styles.modalCard, isDarkMode && styles.modalCardDark]}>
             <View style={styles.modalHeader}>
-              <View style={styles.modalTitleRow}>
-                <Ionicons name="calculator" size={20} color="#0891B2" />
-                <Text style={[styles.modalTitle, isDarkMode && styles.textWhite]}>
-                  Enquire / Update Purchase Expenses
-                </Text>
-              </View>
+              <Text style={[styles.modalTitle, isDarkMode && styles.textWhite]}>
+                Update Purchase Expenses
+              </Text>
               <TouchableOpacity
                 onPress={() => setShowEditCostsModal(false)}
-                style={styles.modalCloseBtn}
+                style={[styles.modalCloseBtn, Platform.OS === 'web' && ({ cursor: 'pointer' } as any)]}
               >
-                <Ionicons name="close" size={20} color="#64748B" />
+                <Ionicons name="close" size={20} color={isDarkMode ? '#CFE9EC' : '#64748B'} />
               </TouchableOpacity>
             </View>
 
             <ScrollView style={styles.modalScroll} showsVerticalScrollIndicator={false}>
-              <Text style={[styles.modalSubtitle, isDarkMode && { color: '#94A3B8' }]}>
-                Adjust the truck consignment purchasing expenses below to dynamically balance the Master bookkeeping receipt.
-              </Text>
-
               {/* Produce Price per Kg */}
               <View style={styles.inputGroup}>
-                <Text style={[styles.inputLabel, isDarkMode && styles.textWhite]}>
-                  Produce Price per Kg (Ksh/kg)
+                <Text style={[styles.inputLabel, isDarkMode && { color: '#F0FDFA' }]}>
+                  Produce Price (Ksh/kg)
                 </Text>
                 <TextInput
                   style={[styles.modalInput, isDarkMode && styles.modalInputDark]}
@@ -876,14 +749,13 @@ export const MasterBatchLedgerReceipt: React.FC<MasterBatchLedgerReceiptProps> =
                   onChangeText={setPricePerKgInput}
                   keyboardType="numeric"
                   placeholder="e.g. 95"
-                  placeholderTextColor="#94A3B8"
+                  placeholderTextColor={isDarkMode ? '#B4D6D9' : '#94A3B8'}
                 />
-                <Text style={styles.inputHint}>Bulk farm purchase price per kilogram</Text>
               </View>
 
               {/* Avg Net Weight Kg */}
               <View style={styles.inputGroup}>
-                <Text style={[styles.inputLabel, isDarkMode && styles.textWhite]}>
+                <Text style={[styles.inputLabel, isDarkMode && { color: '#F0FDFA' }]}>
                   Average Net Weight (kg/net)
                 </Text>
                 <TextInput
@@ -892,15 +764,14 @@ export const MasterBatchLedgerReceipt: React.FC<MasterBatchLedgerReceiptProps> =
                   onChangeText={setAvgWeightInput}
                   keyboardType="numeric"
                   placeholder="e.g. 90"
-                  placeholderTextColor="#94A3B8"
+                  placeholderTextColor={isDarkMode ? '#B4D6D9' : '#94A3B8'}
                 />
-                <Text style={styles.inputHint}>Standard packed net weight (e.g. 90kg sack)</Text>
               </View>
 
               {/* Packaging Sacks Price per Net */}
               <View style={styles.inputGroup}>
-                <Text style={[styles.inputLabel, isDarkMode && styles.textWhite]}>
-                  Empty Packaging Net Cost (Ksh/net)
+                <Text style={[styles.inputLabel, isDarkMode && { color: '#F0FDFA' }]}>
+                  Packaging Sacks (Ksh/net)
                 </Text>
                 <TextInput
                   style={[styles.modalInput, isDarkMode && styles.modalInputDark]}
@@ -908,15 +779,14 @@ export const MasterBatchLedgerReceipt: React.FC<MasterBatchLedgerReceiptProps> =
                   onChangeText={setPackagingCostInput}
                   keyboardType="numeric"
                   placeholder="e.g. 45"
-                  placeholderTextColor="#94A3B8"
+                  placeholderTextColor={isDarkMode ? '#B4D6D9' : '#94A3B8'}
                 />
-                <Text style={styles.inputHint}>Multiplied by total nets ({totalNets} nets)</Text>
               </View>
 
-              {/* Incurred Transport Freight */}
+              {/* Transport */}
               <View style={styles.inputGroup}>
-                <Text style={[styles.inputLabel, isDarkMode && styles.textWhite]}>
-                  Incurred Long-Distance Transport (Ksh)
+                <Text style={[styles.inputLabel, isDarkMode && { color: '#F0FDFA' }]}>
+                  Transport (Ksh)
                 </Text>
                 <TextInput
                   style={[styles.modalInput, isDarkMode && styles.modalInputDark]}
@@ -924,15 +794,14 @@ export const MasterBatchLedgerReceipt: React.FC<MasterBatchLedgerReceiptProps> =
                   onChangeText={setTransportFeeInput}
                   keyboardType="numeric"
                   placeholder="e.g. 45000"
-                  placeholderTextColor="#94A3B8"
+                  placeholderTextColor={isDarkMode ? '#B4D6D9' : '#94A3B8'}
                 />
-                <Text style={styles.inputHint}>Total multi-ton truck freight haulage into Nairobi</Text>
               </View>
 
-              {/* Sourcing Broker Fee */}
+              {/* Broker Commission */}
               <View style={styles.inputGroup}>
-                <Text style={[styles.inputLabel, isDarkMode && styles.textWhite]}>
-                  Incurred Sourcing Broker Commission (Ksh)
+                <Text style={[styles.inputLabel, isDarkMode && { color: '#F0FDFA' }]}>
+                  Broker Commission (Ksh)
                 </Text>
                 <TextInput
                   style={[styles.modalInput, isDarkMode && styles.modalInputDark]}
@@ -940,15 +809,14 @@ export const MasterBatchLedgerReceipt: React.FC<MasterBatchLedgerReceiptProps> =
                   onChangeText={setBrokerFeeInput}
                   keyboardType="numeric"
                   placeholder="e.g. 6000"
-                  placeholderTextColor="#94A3B8"
+                  placeholderTextColor={isDarkMode ? '#B4D6D9' : '#94A3B8'}
                 />
-                <Text style={styles.inputHint}>Origin farm agent commission</Text>
               </View>
 
-              {/* Farm Loaders & Sorters */}
+              {/* Loaders */}
               <View style={styles.inputGroup}>
-                <Text style={[styles.inputLabel, isDarkMode && styles.textWhite]}>
-                  Farm Sorters & Loaders Fee (Ksh)
+                <Text style={[styles.inputLabel, isDarkMode && { color: '#F0FDFA' }]}>
+                  Loaders (Ksh)
                 </Text>
                 <TextInput
                   style={[styles.modalInput, isDarkMode && styles.modalInputDark]}
@@ -956,22 +824,31 @@ export const MasterBatchLedgerReceipt: React.FC<MasterBatchLedgerReceiptProps> =
                   onChangeText={setFarmLoadersInput}
                   keyboardType="numeric"
                   placeholder="e.g. 4500"
-                  placeholderTextColor="#94A3B8"
+                  placeholderTextColor={isDarkMode ? '#B4D6D9' : '#94A3B8'}
                 />
-                <Text style={styles.inputHint}>Field manual grading and truck loading labor</Text>
               </View>
 
               {/* Action Buttons */}
               <View style={styles.modalBtnRow}>
                 <TouchableOpacity
-                  style={styles.modalCancelBtn}
+                  style={[
+                    styles.modalCancelBtn,
+                    isDarkMode && { backgroundColor: '#1B4F55', borderColor: '#7AB5BC' },
+                    Platform.OS === 'web' && ({ cursor: 'pointer' } as any),
+                  ]}
                   onPress={() => setShowEditCostsModal(false)}
                 >
-                  <Text style={styles.modalCancelBtnText}>Cancel</Text>
+                  <Text style={[styles.modalCancelBtnText, isDarkMode && { color: '#F0FDFA' }]}>
+                    Cancel
+                  </Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  style={styles.modalSaveBtn}
+                  style={[
+                    styles.modalSaveBtn,
+                    isDarkMode && { backgroundColor: '#059669' },
+                    Platform.OS === 'web' && ({ cursor: 'pointer' } as any),
+                  ]}
                   onPress={handleSaveCosts}
                   activeOpacity={0.8}
                 >
@@ -983,6 +860,147 @@ export const MasterBatchLedgerReceipt: React.FC<MasterBatchLedgerReceiptProps> =
           </View>
         </View>
       </Modal>
+    </View>
+  );
+};
+
+/**
+ * Standalone Dispatch Report Card rendered below Today's Drawer so reports
+ * are sent after reviewing all batch receipts, expenses, and drawer totals.
+ */
+export const BatchDispatchReportCard: React.FC<{
+  isDarkMode?: boolean;
+  selectedBatchId?: string;
+}> = ({ isDarkMode = false, selectedBatchId }) => {
+  const {
+    currentBatch: storeCurrentBatch,
+    historicalBatches,
+    sales,
+    expenses,
+    casualLaborers,
+    creditRepayments,
+  } = useAppStore();
+
+  const currentBatch =
+    (selectedBatchId
+      ? [storeCurrentBatch, ...historicalBatches].find((b) => b?.id === selectedBatchId)
+      : storeCurrentBatch) ?? storeCurrentBatch;
+
+  if (!currentBatch) return null;
+
+  const totalNets = currentBatch.initialGrade1Nets + currentBatch.initialGrade2Nets;
+  const costs = currentBatch.purchaseCosts;
+  const avgWeight = costs?.avgNetWeightKg ?? 0;
+  const produceCost = totalNets * avgWeight * (costs?.pricePerKg ?? 0);
+  const packagingCost = totalNets * (costs?.packagingNetUnitCost ?? 0);
+  const cessPaid = currentBatch.isNccCessPaid ? currentBatch.nccCessPaid || 0 : 0;
+  const totalInboundSourcing =
+    produceCost +
+    packagingCost +
+    cessPaid +
+    (costs?.transportFee ?? 0) +
+    (costs?.brokerSourcingFee ?? 0) +
+    (costs?.farmLoadersSortersFee ?? 0);
+
+  const settledExpenses = expenses
+    .filter((e) => e.batchId === currentBatch.id && e.isPaid === true)
+    .reduce((sum, e) => sum + e.amount, 0);
+  const settledLabor = casualLaborers
+    .filter((l) => l.batchId === currentBatch.id && l.isPaid)
+    .reduce((sum, l) => sum + l.agreedWage, 0);
+  const totalOutflows = totalInboundSourcing + settledExpenses + settledLabor;
+
+  const batchSales = sales.filter((s) => s.batchId === currentBatch.id);
+  const totalSoldNets = batchSales.reduce((sum, s) => sum + s.quantityNets, 0);
+  const totalRemainingNets = Math.max(0, totalNets - totalSoldNets);
+  const cashSalesTotal = batchSales
+    .filter((s) => s.paymentMethod === 'CASH')
+    .reduce((sum, s) => sum + s.totalAmount, 0);
+  const mpesaSalesTotal = batchSales
+    .filter((s) => s.paymentMethod === 'MPESA')
+    .reduce((sum, s) => sum + s.totalAmount, 0);
+  const repaidCreditTotal = creditRepayments
+    .filter((r) => r.batchId === currentBatch.id)
+    .reduce((sum, r) => sum + r.amountPaid, 0);
+  const totalRealizedInflows = cashSalesTotal + mpesaSalesTotal + repaidCreditTotal;
+  const currentNetPosition = totalRealizedInflows - totalOutflows;
+
+  const dispatchMessage = async (channel: 'EMAIL' | 'SMS') => {
+    if (channel === 'EMAIL') {
+      const subject = encodeURIComponent(
+        `Batch Reconciliation - ${currentBatch.batchNumber} (${currentBatch.truckPlate})`
+      );
+      const bodyText =
+        `Batch: ${currentBatch.batchNumber} (${currentBatch.truckPlate})\n` +
+        `Sold: ${totalSoldNets}/${totalNets} nets (${totalRemainingNets} left)\n` +
+        `Sales: Ksh ${totalRealizedInflows.toLocaleString()}\n` +
+        `Expenses: Ksh ${totalOutflows.toLocaleString()}\n` +
+        `Net Position: Ksh ${currentNetPosition.toLocaleString()}`;
+      const mailUrl = `mailto:?subject=${subject}&body=${encodeURIComponent(bodyText)}`;
+      try {
+        const supported = await Linking.canOpenURL(mailUrl);
+        if (supported) {
+          await Linking.openURL(mailUrl);
+        } else {
+          await Share.share({ message: bodyText, title: 'Batch Reconciliation Report' });
+        }
+      } catch {
+        await Share.share({ message: bodyText, title: 'Batch Reconciliation Report' });
+      }
+      return;
+    }
+
+    const smsBody =
+      `RECONCILIATION ${currentBatch.batchNumber} (${currentBatch.truckPlate}): ` +
+      `Sold ${totalSoldNets}/${totalNets} nets (${totalRemainingNets} left). ` +
+      `In: Ksh ${totalRealizedInflows.toLocaleString()}, ` +
+      `Out: Ksh ${totalOutflows.toLocaleString()}, ` +
+      `Net: Ksh ${currentNetPosition.toLocaleString()}.`;
+    const smsUrl = `sms:?body=${encodeURIComponent(smsBody)}`;
+    try {
+      const supported = await Linking.canOpenURL(smsUrl);
+      if (supported) {
+        await Linking.openURL(smsUrl);
+      } else {
+        await Share.share({ message: smsBody, title: 'Batch Reconciliation SMS' });
+      }
+    } catch {
+      await Share.share({ message: smsBody, title: 'Batch Reconciliation SMS' });
+    }
+  };
+
+  return (
+    <View style={[styles.dispatchStandaloneCard, isDarkMode && styles.dispatchStandaloneCardDark]}>
+      <Text style={[styles.dispatchSectionTitle, isDarkMode && { color: '#CFE9EC' }]}>
+        DISPATCH REPORT
+      </Text>
+      <View style={styles.dispatchRow}>
+        <TouchableOpacity
+          style={[
+            styles.dispatchBtn,
+            styles.dispatchEmailBtn,
+            Platform.OS === 'web' && ({ cursor: 'pointer' } as any),
+          ]}
+          activeOpacity={0.85}
+          onPress={() => dispatchMessage('EMAIL')}
+        >
+          <Ionicons name="mail-outline" size={16} color="#FFFFFF" />
+          <Text style={styles.dispatchBtnText}>Email Master</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[
+            styles.dispatchBtn,
+            styles.dispatchSmsBtn,
+            Platform.OS === 'web' && ({ cursor: 'pointer' } as any),
+          ]}
+          activeOpacity={0.85}
+          onPress={() => dispatchMessage('SMS')}
+        >
+          <Ionicons name="chatbubble-ellipses-outline" size={16} color="#FFFFFF" />
+          <Text style={styles.dispatchBtnText}>Send via SMS</Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 };
@@ -1025,21 +1043,21 @@ const styles = StyleSheet.create({
   receiptPaper: {
     backgroundColor: '#FFFDF7',
     borderRadius: 8,
-    borderWidth: 1.5,
-    borderColor: '#E2E8F0',
     paddingHorizontal: 16,
     paddingVertical: 14,
     shadowColor: '#000000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
+    shadowOpacity: 0.1,
     shadowRadius: 10,
     elevation: 4,
   },
   receiptPaperDark: {
     backgroundColor: '#1B4F55',
-    borderColor: '#7AB5BC',
-    borderWidth: 0.75,
     shadowColor: '#0D2C30',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 6,
   },
   serratedEdge: {
     alignItems: 'center',
@@ -1107,10 +1125,18 @@ const styles = StyleSheet.create({
   quickOverviewCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    padding: 10,
+    padding: 12,
     marginVertical: 6,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 5,
+    elevation: 2,
+  },
+  quickOverviewCardDark: {
+    backgroundColor: '#256A71',
+    shadowColor: '#0D2C30',
+    shadowOpacity: 0.25,
   },
   overviewTitle: {
     fontSize: 11,
@@ -1119,6 +1145,40 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 8,
     letterSpacing: 0.5,
+  },
+  summaryList: {
+    gap: 8,
+  },
+  summaryListRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  summaryListRowDark: {
+    borderBottomColor: 'rgba(122, 181, 188, 0.25)',
+  },
+  summaryListLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
+  },
+  summaryListLabel: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  summaryListSub: {
+    fontSize: 10,
+    color: '#64748B',
+    marginTop: 1,
+  },
+  summaryListValue: {
+    fontSize: 13,
+    fontWeight: '900',
   },
   kpiRow: {
     flexDirection: 'row',
@@ -1162,6 +1222,31 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '700',
     color: '#0891B2',
+  },
+  expensesGroupCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    padding: 12,
+    marginVertical: 6,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 5,
+    elevation: 2,
+  },
+  expensesGroupCardDark: {
+    backgroundColor: '#256A71',
+    shadowColor: '#0D2C30',
+    shadowOpacity: 0.25,
+  },
+  expensesSectionDivider: {
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+  },
+  expensesSectionDividerDark: {
+    borderTopColor: 'rgba(122, 181, 188, 0.25)',
   },
   // Accordion Section Styles
   accordionHeaderBtn: {
@@ -1304,25 +1389,50 @@ const styles = StyleSheet.create({
   },
   channelsBox: {
     backgroundColor: '#F8FAFC',
-    padding: 8,
-    borderRadius: 6,
-    marginVertical: 4,
+    padding: 10,
+    borderRadius: 8,
+    marginVertical: 6,
+  },
+  channelsBoxDark: {
+    backgroundColor: '#1B4F55',
   },
   channelsHeading: {
     fontSize: 10,
-    fontWeight: '700',
+    fontWeight: '800',
     color: '#64748B',
+    letterSpacing: 0.4,
     marginBottom: 2,
   },
-  channelItem: {
-    fontSize: 10,
+  channelRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+  },
+  channelRowDark: {
+    borderBottomColor: 'rgba(122, 181, 188, 0.2)',
+  },
+  channelItemLabel: {
+    fontSize: 11,
+    fontWeight: '600',
     color: '#334155',
-    lineHeight: 14,
+  },
+  channelItemValue: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#0F172A',
   },
   channelItemPending: {
-    fontSize: 10,
+    fontSize: 11,
+    fontWeight: '700',
     color: '#D97706',
-    lineHeight: 14,
+  },
+  channelItemPendingValue: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#D97706',
   },
   balancingSection: {
     marginVertical: 6,
@@ -1421,6 +1531,63 @@ const styles = StyleSheet.create({
     color: '#94A3B8',
     letterSpacing: 0.5,
   },
+  dispatchStandaloneCard: {
+    backgroundColor: '#FFFDF7',
+    borderRadius: 8,
+    padding: 14,
+    marginHorizontal: 14,
+    marginBottom: 14,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    elevation: 4,
+  },
+  dispatchStandaloneCardDark: {
+    backgroundColor: '#1B4F55',
+    shadowColor: '#0D2C30',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 6,
+  },
+  dispatchSectionTitle: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#64748B',
+    letterSpacing: 0.5,
+    marginBottom: 8,
+  },
+  dispatchRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  dispatchBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+    paddingVertical: 11,
+    borderRadius: 10,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.14,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  dispatchEmailBtn: {
+    backgroundColor: '#0891B2',
+  },
+  dispatchSmsBtn: {
+    backgroundColor: '#059669',
+  },
+  dispatchBtnText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.2,
+  },
 
   // Modal Styles
   modalOverlay: {
@@ -1441,7 +1608,9 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   modalCardDark: {
-    backgroundColor: '#0F172A',
+    backgroundColor: '#256A71',
+    shadowColor: '#0D2C30',
+    shadowOpacity: 0.35,
   },
   modalHeader: {
     flexDirection: 'row',
@@ -1492,9 +1661,9 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   modalInputDark: {
-    backgroundColor: '#1E293B',
-    borderColor: '#334155',
-    color: '#FFFFFF',
+    backgroundColor: '#1D575D',
+    borderColor: '#7AB5BC',
+    color: '#F0FDFA',
   },
   inputHint: {
     fontSize: 10,

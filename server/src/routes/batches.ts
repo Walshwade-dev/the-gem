@@ -399,6 +399,29 @@ export async function registerBatchRoutes(app: FastifyInstance, deps: AppRouteDe
     return reply.send({ batch: updated });
   });
 
+  // PATCH /batches/:id (Master only — edit batch metadata if a mistake was made)
+  app.patch('/batches/:id', { preHandler: [authenticate, requireMaster] }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const parsed = z
+      .object({
+        truckPlate: z.string().min(1).optional(),
+        originRegionName: z.string().min(1).optional(),
+        originSpecificLocation: z.string().optional(),
+        qualityNotes: z.string().optional(),
+      })
+      .safeParse(request.body);
+    if (!parsed.success) return sendValidationError(reply, parsed.error);
+
+    const [updated] = await db
+      .update(truckBatches)
+      .set(parsed.data)
+      .where(and(eq(truckBatches.id, id), eq(truckBatches.masterId, request.auth!.masterId)))
+      .returning();
+    if (!updated) return reply.code(404).send({ error: 'BATCH_NOT_FOUND' });
+
+    return reply.send({ batch: updated });
+  });
+
   // PATCH /batches/:id/purchase-costs (Master only)
   app.patch(
     '/batches/:id/purchase-costs',
@@ -522,9 +545,12 @@ export async function registerBatchRoutes(app: FastifyInstance, deps: AppRouteDe
     const parsed = z
       .object({
         title: z.string().min(1).optional(),
+        packaging: z.string().min(1).optional(),
+        weightGrams: z.number().int().positive().optional(),
         priceCents: z.number().int().positive().optional(),
         minPriceCents: z.number().int().positive().optional(),
         description: z.string().optional(),
+        tags: z.array(z.string()).optional(),
       })
       .safeParse(request.body);
     if (!parsed.success) return sendValidationError(reply, parsed.error);

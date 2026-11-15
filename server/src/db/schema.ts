@@ -299,6 +299,7 @@ export const sales = pgTable('sales', {
   sellerType: text('seller_type').notNull(),
   sellerId: uuid('seller_id').notNull(),
   buyerId: uuid('buyer_id').references(() => buyers.id),
+  buyerName: text('buyer_name'),
   grade: text('grade').notNull(),
   pricingMode: text('pricing_mode').notNull(),
   quantityNominalGrams: integer('quantity_nominal_grams').notNull(),

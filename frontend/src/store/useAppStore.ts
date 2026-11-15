@@ -77,6 +77,7 @@ export interface AppState {
 
   // Auth & Sync Actions
   syncFromServer: () => Promise<boolean>;
+  selectActiveBatch: (batchId: string) => void;
   syncMasterWithClerk: (profile?: {
     email?: string;
     fullName?: string;
@@ -133,6 +134,23 @@ export interface AppState {
   batchProducts: BatchProduct[];
   addBatchProduct: (product: Omit<BatchProduct, 'id'>) => Promise<void>;
   deleteBatchProduct: (productId: string) => Promise<void>;
+  updateBatchDetails: (params: {
+    truckPlate?: string;
+    originRegionName?: string;
+    originSpecificLocation?: string;
+    qualityNotes?: string;
+  }) => Promise<void>;
+  updateBatchProduct: (
+    productId: string,
+    params: {
+      title?: string;
+      packaging?: string;
+      weightKg?: number;
+      pricePerBag?: number;
+      minPrice?: number;
+      description?: string;
+    }
+  ) => Promise<void>;
   updateBatchPricing: (params: {
     pricePerBagGrade1?: number;
     minPriceGrade1?: number;
@@ -151,6 +169,10 @@ export interface AppState {
     priceGrade2?: number;
     minPriceGrade2?: number;
     stockGrade2?: number;
+    weightKgGrade2?: number;
+    sizesGrade2?: string[];
+    descriptionGrade2?: string;
+    photoUrlsGrade2?: string[];
     photoUrls?: string[];
     description?: string;
     tags?: string[];
@@ -204,6 +226,7 @@ export interface AppState {
 
   // Expenses & Casual Labor
   addDailyExpense: (params: {
+    batchId?: string;
     category: DailyExpense['category'];
     description: string;
     amount: number;
@@ -211,6 +234,7 @@ export interface AppState {
     receiptRef?: string;
   }) => Promise<void>;
   addCasualLaborer: (params: {
+    batchId?: string;
     workerName: string;
     task: CasualLaborer['task'];
     agreedWage: number;
@@ -270,6 +294,30 @@ const mapFrontendCategoryToCode = (category: DailyExpense['category']): string =
       return 'OTHER';
   }
 };
+
+const MONTHS_SHORT = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+
+function formatReadableBatchNumber(origin: string, onionType?: string, date = new Date()): string {
+  const originPart =
+    origin
+      .split(',')[0]
+      .split('(')[0]
+      .trim()
+      .replace(/[^a-zA-Z0-9]/g, '')
+      .toUpperCase()
+      .slice(0, 10) || 'BATCH';
+  const dd = String(date.getDate()).padStart(2, '0');
+  const mmm = MONTHS_SHORT[date.getMonth()] || 'JAN';
+  const yy = String(date.getFullYear()).slice(-2);
+  const datePart = `${dd}${mmm}${yy}`;
+  const typePart =
+    (onionType || 'ONION')
+      .replace(/\s*\(Grade\s*[12]\)\s*$/i, '')
+      .replace(/[^a-zA-Z0-9]/g, '')
+      .toUpperCase()
+      .slice(0, 10) || 'ONION';
+  return `${originPart}-${datePart}-${typePart}`;
+}
 
 export const useAppStore = create<AppState>()(
   persist(
@@ -349,8 +397,21 @@ export const useAppStore = create<AppState>()(
             try {
               const payload = await apiFetch<BackendSyncPayload>('/sync');
               const mapped = mapSyncPayloadToStore(payload);
+              const prevSelectedId = get().currentBatch?.id;
+              const allMapped = [mapped.currentBatch, ...mapped.historicalBatches].filter(
+                (b): b is TruckBatch => Boolean(b)
+              );
+              const preserved = prevSelectedId
+                ? allMapped.find((b) => b.id === prevSelectedId && b.status === 'ACTIVE')
+                : undefined;
+              const nextCurrentBatch = preserved ?? mapped.currentBatch;
+              const nextHistoricalBatches = nextCurrentBatch
+                ? allMapped.filter((b) => b.id !== nextCurrentBatch.id)
+                : mapped.historicalBatches;
               set({
                 ...mapped,
+                currentBatch: nextCurrentBatch,
+                historicalBatches: nextHistoricalBatches,
                 isAuthenticated: true,
                 isSyncing: false,
                 lastSyncError: undefined,
@@ -569,16 +630,30 @@ export const useAppStore = create<AppState>()(
         // Server cron manages dayNumber; kept as no-op for UI compatibility
       },
 
+      selectActiveBatch: (batchId) => {
+        const state = get();
+        const all = [state.currentBatch, ...state.historicalBatches].filter(
+          (b): b is TruckBatch => Boolean(b)
+        );
+        const target = all.find((b) => b.id === batchId);
+        if (!target) return;
+        const others = all.filter((b) => b.id !== batchId);
+        set({ currentBatch: target, historicalBatches: others });
+      },
+
       createBatch: async (params) => {
         const pkgGrams = 20000;
         const g1Grams = Math.round(params.initialGrade1Nets * pkgGrams);
         const g2Grams = Math.round(params.initialGrade2Nets * pkgGrams);
         const netsLoaded = Math.round(params.initialGrade1Nets + params.initialGrade2Nets);
-        await apiFetch('/batches', {
+        const res = await apiFetch<{ batch: { id: string } }>('/batches', {
           method: 'POST',
           idempotent: true,
           body: {
-            batchNumber: `WB-${Date.now().toString().slice(-6)}`,
+            batchNumber: formatReadableBatchNumber(
+              params.origin.specificLocation || params.origin.regionName,
+              params.qualityNotes?.split(/\s+/).slice(0, 2).join('') || 'ONION'
+            ),
             truckPlate: params.truckPlate,
             originRegionId: params.origin.regionId,
             originRegionName: params.origin.regionName,
@@ -595,6 +670,47 @@ export const useAppStore = create<AppState>()(
             qualityNotes: params.qualityNotes,
           },
         });
+        const regionLabel = params.origin.regionName.split('(')[0].trim() || 'Market Onion';
+        const productJobs: Promise<unknown>[] = [];
+        if (params.initialGrade1Nets > 0) {
+          productJobs.push(
+            apiFetch(`/batches/${res.batch.id}/products`, {
+              method: 'POST',
+              body: {
+                title: `${regionLabel} Grade 1`,
+                grade: 'GRADE_1',
+                packaging: '20KG_NET',
+                weightGrams: pkgGrams,
+                priceCents: 130000,
+                minPriceCents: 115000,
+                photoUrls: params.photoUrls ?? [],
+                description: params.qualityNotes || `Grade 1 stock from ${params.origin.regionName}`,
+                tags: ['New Stock', 'Grade 1'],
+              },
+            })
+          );
+        }
+        if (params.initialGrade2Nets > 0) {
+          productJobs.push(
+            apiFetch(`/batches/${res.batch.id}/products`, {
+              method: 'POST',
+              body: {
+                title: `${regionLabel} Grade 2`,
+                grade: 'GRADE_2',
+                packaging: '20KG_NET',
+                weightGrams: pkgGrams,
+                priceCents: 100000,
+                minPriceCents: 90000,
+                photoUrls: params.photoUrls ?? [],
+                description: params.qualityNotes || `Grade 2 stock from ${params.origin.regionName}`,
+                tags: ['New Stock', 'Grade 2'],
+              },
+            })
+          );
+        }
+        if (productJobs.length > 0) {
+          await Promise.all(productJobs);
+        }
         await get().syncFromServer();
       },
 
@@ -639,6 +755,31 @@ export const useAppStore = create<AppState>()(
         await get().syncFromServer();
       },
 
+      updateBatchDetails: async (params) => {
+        const batch = get().currentBatch;
+        if (!batch) return;
+        await apiFetch(`/batches/${batch.id}`, {
+          method: 'PATCH',
+          body: params,
+        });
+        await get().syncFromServer();
+      },
+
+      updateBatchProduct: async (productId, params) => {
+        await apiFetch(`/products/${productId}`, {
+          method: 'PATCH',
+          body: {
+            title: params.title,
+            packaging: params.packaging,
+            weightGrams: params.weightKg ? Math.round(params.weightKg * 1000) : undefined,
+            priceCents: params.pricePerBag ? Math.round(params.pricePerBag * 100) : undefined,
+            minPriceCents: params.minPrice ? Math.round(params.minPrice * 100) : undefined,
+            description: params.description,
+          },
+        });
+        await get().syncFromServer();
+      },
+
       updateBatchPricing: async (params) => {
         const batch = get().currentBatch;
         if (!batch) return;
@@ -672,7 +813,7 @@ export const useAppStore = create<AppState>()(
           method: 'POST',
           idempotent: true,
           body: {
-            batchNumber: `WB-${Date.now().toString().slice(-6)}`,
+            batchNumber: formatReadableBatchNumber(params.origin, params.title),
             truckPlate: params.truckPlate,
             originRegionName: params.origin,
             packagingGrams: pkgGrams,
@@ -691,20 +832,67 @@ export const useAppStore = create<AppState>()(
           },
         });
 
-        await apiFetch(`/batches/${res.batch.id}/products`, {
-          method: 'POST',
-          body: {
-            title: params.title,
-            grade: 'GRADE_1',
-            packaging: params.packagingKg >= 100 ? '100KG_NET' : '50KG_BAG',
-            weightGrams: pkgGrams,
-            priceCents: Math.round(params.priceGrade1 * 100),
-            minPriceCents: Math.round(params.minPriceGrade1 * 100),
-            photoUrls: params.photoUrls ?? [],
-            description: params.description,
-            tags: params.tags ?? [],
-          },
-        });
+        const packagingCode = `${Math.round(params.packagingKg || 20)}KG_NET`;
+        const primaryPhotoUrl = params.photoUrls?.[0];
+        const productCreates: Promise<unknown>[] = [
+          apiFetch(`/batches/${res.batch.id}/products`, {
+            method: 'POST',
+            body: {
+              title: params.title,
+              grade: 'GRADE_1',
+              packaging: packagingCode,
+              weightGrams: pkgGrams,
+              priceCents: Math.round(params.priceGrade1 * 100),
+              minPriceCents: Math.round(params.minPriceGrade1 * 100),
+              photoUrl: primaryPhotoUrl,
+              photoUrls: params.photoUrls ?? [],
+              description: params.description,
+              tags: params.tags ?? [],
+            },
+          }),
+        ];
+        if (
+          params.hasGrade2 &&
+          (params.stockGrade2 ?? 0) > 0 &&
+          (params.priceGrade2 ?? 0) > 0
+        ) {
+          const g2WeightKg = params.weightKgGrade2 && params.weightKgGrade2 > 0
+            ? params.weightKgGrade2
+            : params.packagingKg || 20;
+          const g2PackagingCode = `${Math.round(g2WeightKg)}KG_NET`;
+          const g2BaseTags = (params.tags ?? []).filter(
+            (t) => t !== 'Grade 1' && t !== 'Large Size' && t !== 'Medium Size' && t !== 'Small Size'
+          );
+          const g2Tags = [
+            'Grade 2',
+            ...(params.sizesGrade2 ?? []),
+            ...g2BaseTags,
+          ];
+          const g2Photos =
+            params.photoUrlsGrade2 && params.photoUrlsGrade2.length > 0
+              ? params.photoUrlsGrade2
+              : params.photoUrls ?? [];
+          productCreates.push(
+            apiFetch(`/batches/${res.batch.id}/products`, {
+              method: 'POST',
+              body: {
+                title: params.title,
+                grade: 'GRADE_2',
+                packaging: g2PackagingCode,
+                weightGrams: Math.round(g2WeightKg * 1000),
+                priceCents: Math.round((params.priceGrade2 ?? 0) * 100),
+                minPriceCents: Math.round(
+                  (params.minPriceGrade2 ?? params.priceGrade2 ?? 0) * 100
+                ),
+                photoUrl: g2Photos[0],
+                photoUrls: g2Photos,
+                description: params.descriptionGrade2?.trim() || params.description,
+                tags: g2Tags,
+              },
+            })
+          );
+        }
+        await Promise.all(productCreates);
         await get().syncFromServer();
       },
 
@@ -785,6 +973,7 @@ export const useAppStore = create<AppState>()(
               paymentMode: params.paymentMethod,
               mpesaReceipt: params.mpesaReceiptCode,
               payerPhoneE164: params.buyerPhone,
+              buyerName: params.buyerName,
               guarantorAccepted: params.guarantorAccepted ?? true,
               buyer:
                 params.paymentMethod === 'CREDIT' &&
@@ -843,13 +1032,13 @@ export const useAppStore = create<AppState>()(
 
       addDailyExpense: async (params) => {
         const state = get();
-        const batch = state.currentBatch;
-        if (!batch) return;
+        const batchId = params.batchId || state.currentBatch?.id;
+        if (!batchId) return;
         const code = mapFrontendCategoryToCode(params.category);
         const cat =
           state.expenseCategories.find((c) => c.code === code) ?? state.expenseCategories[0];
         if (!cat) return;
-        await apiFetch(`/batches/${batch.id}/expenses`, {
+        await apiFetch(`/batches/${batchId}/expenses`, {
           method: 'POST',
           body: {
             categoryId: cat.id,
@@ -864,9 +1053,9 @@ export const useAppStore = create<AppState>()(
       },
 
       addCasualLaborer: async (params) => {
-        const batch = get().currentBatch;
-        if (!batch) return;
-        await apiFetch(`/batches/${batch.id}/laborers`, {
+        const batchId = params.batchId || get().currentBatch?.id;
+        if (!batchId) return;
+        await apiFetch(`/batches/${batchId}/laborers`, {
           method: 'POST',
           body: {
             workerName: params.workerName,

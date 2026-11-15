@@ -961,4 +961,81 @@ describe('Phase 2A Backend Acceptance Tests (18/18)', () => {
       await pglite.exec('RESET ROLE');
     }
   });
+
+  it('19. Batch and Grade 1 + Grade 2 products persist across /batches, /products, and /sync', async () => {
+    const batchRes = await app.inject({
+      method: 'POST',
+      url: '/batches',
+      headers: { authorization: `Bearer ${masterToken}` },
+      payload: {
+        batchNumber: 'WB-PERSIST-01',
+        truckPlate: 'KDR 901Z',
+        originRegionName: 'Singida, Tanzania',
+        packagingGrams: 50000,
+        netsLoaded: 120,
+        initialGrade1NominalGrams: 4000000,
+        initialGrade2NominalGrams: 2000000,
+        nccCountedNets: 120,
+        priceG1Cents: 320000,
+        minPriceG1Cents: 290000,
+        priceG2Cents: 240000,
+        minPriceG2Cents: 210000,
+      },
+    });
+    expect(batchRes.statusCode).toBe(201);
+    const createdBatchId = batchRes.json().batch.id as string;
+
+    const p1Res = await app.inject({
+      method: 'POST',
+      url: `/batches/${createdBatchId}/products`,
+      headers: { authorization: `Bearer ${masterToken}` },
+      payload: {
+        title: 'Singida Red Jumbo',
+        grade: 'GRADE_1',
+        packaging: '50KG_BAG',
+        weightGrams: 50000,
+        priceCents: 320000,
+        minPriceCents: 290000,
+      },
+    });
+    expect(p1Res.statusCode).toBe(201);
+
+    const p2Res = await app.inject({
+      method: 'POST',
+      url: `/batches/${createdBatchId}/products`,
+      headers: { authorization: `Bearer ${masterToken}` },
+      payload: {
+        title: 'Singida Red Jumbo (Grade 2)',
+        grade: 'GRADE_2',
+        packaging: '50KG_BAG',
+        weightGrams: 50000,
+        priceCents: 240000,
+        minPriceCents: 210000,
+      },
+    });
+    expect(p2Res.statusCode).toBe(201);
+
+    const syncRes = await app.inject({
+      method: 'GET',
+      url: '/sync',
+      headers: { authorization: `Bearer ${masterToken}` },
+    });
+    expect(syncRes.statusCode).toBe(200);
+    const syncBody = syncRes.json();
+
+    const persistedBatch = (syncBody.batches as Array<Record<string, unknown>>).find(
+      (b) => b.id === createdBatchId
+    );
+    expect(persistedBatch).toBeDefined();
+    expect(persistedBatch?.truckPlate).toBe('KDR 901Z');
+    expect(persistedBatch?.poolGrade1NominalGrams).toBe(4000000);
+    expect(persistedBatch?.poolGrade2NominalGrams).toBe(2000000);
+
+    const persistedProducts = (syncBody.batchProducts as Array<Record<string, unknown>>).filter(
+      (p) => p.batchId === createdBatchId
+    );
+    expect(persistedProducts.length).toBe(2);
+    expect(persistedProducts.some((p) => p.grade === 'GRADE_1' && p.priceCents === 320000)).toBe(true);
+    expect(persistedProducts.some((p) => p.grade === 'GRADE_2' && p.priceCents === 240000)).toBe(true);
+  });
 });

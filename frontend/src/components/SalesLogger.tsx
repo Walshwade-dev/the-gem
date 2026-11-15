@@ -3,7 +3,7 @@
 // High-Contrast, Ergonomic Touch Targets for Fast-Paced Wakulima Market Trading
 // ============================================================================
 
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { 
   View, 
   Text, 
@@ -12,7 +12,10 @@ import {
   TextInput, 
   Alert, 
   KeyboardAvoidingView, 
-  Platform 
+  Platform,
+  PermissionsAndroid,
+  DeviceEventEmitter,
+  NativeModules,
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { THEME } from '../constants/theme';
@@ -20,6 +23,7 @@ import { ProduceGrade, PaymentMethod } from '../types';
 import { useShallow } from 'zustand/react/shallow';
 import { useAppStore } from '../store/useAppStore';
 import { MARKET_CONFIG } from '../constants/config';
+import { getApiBaseUrl } from '../services/api';
 
 export const SalesLogger: React.FC = () => {
   const { 
@@ -31,6 +35,7 @@ export const SalesLogger: React.FC = () => {
     currentUserName, 
     currentUserPhone, 
     allocations,
+    customerCredits,
     isDarkMode,
     acceptedPaymentModes,
   } = useAppStore(
@@ -43,6 +48,7 @@ export const SalesLogger: React.FC = () => {
       currentUserName: s.currentUserName,
       currentUserPhone: s.currentUserPhone,
       allocations: s.allocations,
+      customerCredits: s.customerCredits,
       isDarkMode: s.isDarkMode,
       acceptedPaymentModes: s.acceptedPaymentModes,
     }))
@@ -119,6 +125,107 @@ export const SalesLogger: React.FC = () => {
   const [buyerPhone, setBuyerPhone] = useState<string>('');
   const [buyerNationalId, setBuyerNationalId] = useState<string>('');
   const [mpesaCode, setMpesaCode] = useState<string>('');
+  const [isSubmittingSale, setIsSubmittingSale] = useState<boolean>(false);
+  const [smsPermissionGranted, setSmsPermissionGranted] = useState<boolean>(false);
+  const [autoDetectedNotice, setAutoDetectedNotice] = useState<string | null>(null);
+  const lastHandledSmsIdRef = useRef<string | null>(null);
+
+  const parseMpesaSms = (raw: string) => {
+    const text = raw.trim();
+    if (!text) return;
+    const codeMatch = text.match(/\b([A-Z0-9]{10})\b/);
+    const phoneMatch = text.match(/(?:\+?254|0)(?:7|1)\d{8}/);
+    const nameMatch = text.match(
+      /(?:from|to)\s+([A-Z][A-Za-z.'-]+(?:\s+[A-Z][A-Za-z.'-]+){0,3})(?=\s+(?:\+?254|0)\d|\s+on\b|\s+for\b|\.|,|$)/i
+    );
+    if (codeMatch) setMpesaCode(codeMatch[1].toUpperCase());
+    if (nameMatch?.[1]) setBuyerName(nameMatch[1].trim());
+    if (phoneMatch?.[0]) setBuyerPhone(phoneMatch[0]);
+    if (codeMatch || nameMatch?.[1]) {
+      setAutoDetectedNotice(
+        `Auto-filled ${codeMatch?.[1]?.toUpperCase() || ''}${nameMatch?.[1] ? ` • ${nameMatch[1].trim()}` : ''}`
+      );
+    }
+  };
+
+  const handleRequestSmsCapture = async () => {
+    if (Platform.OS === 'android') {
+      try {
+        const res = await PermissionsAndroid.requestMultiple([
+          PermissionsAndroid.PERMISSIONS.RECEIVE_SMS,
+          PermissionsAndroid.PERMISSIONS.READ_SMS,
+        ]);
+        const granted =
+          res[PermissionsAndroid.PERMISSIONS.RECEIVE_SMS] === PermissionsAndroid.RESULTS.GRANTED ||
+          res[PermissionsAndroid.PERMISSIONS.READ_SMS] === PermissionsAndroid.RESULTS.GRANTED;
+        setSmsPermissionGranted(granted);
+        if (granted) {
+          NativeModules.MpesaSmsModule?.startListening?.();
+          Alert.alert(
+            'SMS Auto-Detect Enabled',
+            'Listening for incoming M-Pesa / Pochi la Biashara SMS notifications. When one arrives, the code and customer name will auto-fill.'
+          );
+        }
+        return;
+      } catch {
+        // Ignore and enable dev listener fallback
+      }
+    }
+    setSmsPermissionGranted(true);
+    Alert.alert(
+      'M-Pesa SMS Listener Active',
+      'Listening for incoming M-Pesa confirmation notifications.'
+    );
+  };
+
+  // Auto-detect incoming M-Pesa SMS (real Android BroadcastReceiver + __DEV__ simulator bridge)
+  useEffect(() => {
+    if (paymentMethod !== 'MPESA') return;
+
+    if (Platform.OS === 'android') {
+      NativeModules.MpesaSmsModule?.startListening?.();
+    }
+
+    const sub = DeviceEventEmitter.addListener(
+      'onMpesaSmsReceived',
+      (payload: { body?: string; message?: string }) => {
+        const msgBody = payload?.body || payload?.message || '';
+        if (msgBody) parseMpesaSms(msgBody);
+      }
+    );
+
+    if (!__DEV__) {
+      return () => {
+        sub.remove();
+      };
+    }
+
+    let cancelled = false;
+    const pollSimulatedSms = async () => {
+      try {
+        const resp = await fetch(`${getApiBaseUrl()}/dev/latest-mpesa-sms`);
+        if (!resp.ok) return;
+        const json = (await resp.json()) as {
+          sms?: { id: string; sender: string; body: string } | null;
+        };
+        if (!cancelled && json?.sms && json.sms.id !== lastHandledSmsIdRef.current) {
+          lastHandledSmsIdRef.current = json.sms.id;
+          parseMpesaSms(json.sms.body);
+        }
+      } catch {
+        // Ignore polling network errors when offline
+      }
+    };
+
+    const timer = setInterval(pollSimulatedSms, 2500);
+    pollSimulatedSms();
+
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+      sub.remove();
+    };
+  }, [paymentMethod]);
 
   // Credit Liability & Consent Verification State
   const [creditAuthMode, setCreditAuthMode] = useState<'SMS' | 'GUARANTOR'>('SMS');
@@ -191,7 +298,7 @@ export const SalesLogger: React.FC = () => {
 
     const gradeLabel = selectedGrade === 'GRADE_1' ? 'Grade 1' : 'Grade 2';
     const truck = currentBatch.truckPlate;
-    const smsMessage = `THE GEM / WAKULIMA MARKET: Credit liability notice for ${buyerName.trim()} (ID: ${buyerNationalId.trim()}). You are receiving ${quantity} nets of ${gradeLabel} on credit totaling KSH ${totalAmount.toLocaleString()} from Truck ${truck}. You are legally liable for this debt. Repayment is tracked in the market ledger. Reply YES to accept liability and confirm sale.`;
+    const smsMessage = `THE GEM / WAKULIMA MARKET: Credit liability notice for ${buyerName.trim()} (ID: ${buyerNationalId.trim()}). You are receiving ${quantity} nets of ${gradeLabel} on credit totaling KSH ${totalAmount.toLocaleString()} from Truck ${truck}. You are legally liable for this debt. Repayment will be tracked in the market ledger. Reply YES to accept liability and confirm sale.`;
 
     setSmsSent(true);
     setBuyerAgreed(false);
@@ -218,6 +325,7 @@ export const SalesLogger: React.FC = () => {
   };
 
   const handleSubmitSale = async () => {
+    if (isSubmittingSale) return;
     if (quantity <= 0) {
       Alert.alert('Invalid Quantity', 'Please specify at least 1 net.');
       return;
@@ -288,22 +396,66 @@ export const SalesLogger: React.FC = () => {
         }
         return;
       }
+
+      // Block duplicate / new credit if customer has any existing unpaid credit
+      const normId = buyerNationalId.trim().toLowerCase();
+      const normPhone = buyerPhone.replace(/\D/g, '').slice(-9);
+      const normName = buyerName.trim().toLowerCase();
+      const existingCustomer = customerCredits.find((c) => {
+        const cId = (c.customerNationalId || '').trim().toLowerCase();
+        const cPhone = (c.customerPhone || '').replace(/\D/g, '').slice(-9);
+        const cName = (c.customerName || '').trim().toLowerCase();
+        return (
+          (normId && cId && cId === normId) ||
+          (normPhone.length >= 9 && cPhone.length >= 9 && cPhone === normPhone) ||
+          (normName && cName === normName)
+        );
+      });
+      const unpaidRecord = existingCustomer?.records.find(
+        (r) => r.status !== 'SETTLED' && r.approvalStatus !== 'REJECTED' && r.totalOwed - r.amountPaid > 0
+      );
+      if (unpaidRecord) {
+        const balance = Math.max(0, unpaidRecord.totalOwed - unpaidRecord.amountPaid);
+        Alert.alert(
+          'Existing Unpaid Credit',
+          `${existingCustomer?.customerName || buyerName.trim()} already has an unpaid credit of Ksh ${balance.toLocaleString()}.\n\nThey must pay/settle the existing credit first before being allowed another credit.`
+        );
+        return;
+      }
     }
 
-    const res = await recordSale({
-      grade: selectedGrade,
-      quantityNets: quantity,
-      negotiatedUnitPrice: numericPrice,
-      paymentMethod,
-      buyerName: buyerName.trim() || undefined,
-      buyerPhone: buyerPhone.trim() || undefined,
-      buyerNationalId: buyerNationalId.trim() || undefined,
-      mpesaReceiptCode: mpesaCode.trim() || undefined,
-      buyerConsentConfirmed: paymentMethod === 'CREDIT' && creditAuthMode === 'SMS' && buyerAgreed,
-      guarantorAccepted: paymentMethod === 'CREDIT' && creditAuthMode === 'GUARANTOR' ? guarantorConsentChecked : true,
-    });
+    const normalizedMpesaCode = mpesaCode.trim().toUpperCase();
+    if (paymentMethod === 'MPESA') {
+      if (!/^[A-Z0-9]{10}$/.test(normalizedMpesaCode)) {
+        Alert.alert(
+          'Valid M-Pesa Code Required',
+          'Please enter or extract the 10-character M-Pesa confirmation code (e.g. TJ12AB34CD) from the Send Money / Pochi la Biashara SMS.'
+        );
+        return;
+      }
+    }
 
-    if (res.success) {
+    const resolvedBuyerName =
+      paymentMethod === 'CASH'
+        ? buyerName.trim() || `CUST-${Date.now().toString(36).toUpperCase().slice(-6)}`
+        : buyerName.trim() || undefined;
+
+    setIsSubmittingSale(true);
+    try {
+      const res = await recordSale({
+        grade: selectedGrade,
+        quantityNets: quantity,
+        negotiatedUnitPrice: numericPrice,
+        paymentMethod,
+        buyerName: resolvedBuyerName,
+        buyerPhone: buyerPhone.trim() || undefined,
+        buyerNationalId: buyerNationalId.trim() || undefined,
+        mpesaReceiptCode: normalizedMpesaCode || undefined,
+        buyerConsentConfirmed: paymentMethod === 'CREDIT' && creditAuthMode === 'SMS' && buyerAgreed,
+        guarantorAccepted: paymentMethod === 'CREDIT' && creditAuthMode === 'GUARANTOR' ? guarantorConsentChecked : true,
+      });
+
+      if (res.success) {
       if (paymentMethod === 'MPESA') {
         const customerName = buyerName.trim() || 'Customer';
         const gradeText = selectedGrade === 'GRADE_1' ? 'Grade 1' : 'Grade 2';
@@ -343,6 +495,8 @@ export const SalesLogger: React.FC = () => {
       setQuantity(1);
       setBuyerName('');
       setBuyerPhone('');
+      setMpesaCode('');
+      setAutoDetectedNotice(null);
       setBuyerNationalId('');
       setMpesaCode('');
       setSmsSent(false);
@@ -350,6 +504,9 @@ export const SalesLogger: React.FC = () => {
       setGuarantorConsentChecked(false);
     } else {
       Alert.alert('Sale Error', res.message);
+    }
+    } finally {
+      setIsSubmittingSale(false);
     }
   };
 
@@ -598,16 +755,93 @@ export const SalesLogger: React.FC = () => {
           </TouchableOpacity>
         </View>
 
-        {/* Additional Customer Fields for M-Pesa or Credit */}
-        {paymentMethod === 'MPESA' && (
+        {/* Customer Name for Cash Sales (auto-assigns unique ID if blank) */}
+        {paymentMethod === 'CASH' && (
           <View style={styles.auxFields}>
             <TextInput
               style={[styles.auxInput, isDarkMode && { backgroundColor: '#0F172A', borderColor: '#334155', color: '#F8FAFC' }]}
-              placeholder="M-Pesa Ref (e.g. QJK891M3KL) or Sender Phone"
-              value={mpesaCode}
-              onChangeText={setMpesaCode}
+              placeholder="Customer Name (leave blank for auto Customer ID)"
+              value={buyerName}
+              onChangeText={setBuyerName}
               placeholderTextColor={THEME.colors.textMuted}
             />
+          </View>
+        )}
+
+        {/* Additional Customer Fields for M-Pesa (Send Money / Pochi la Biashara) */}
+        {paymentMethod === 'MPESA' && (
+          <View style={styles.auxFields}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+              <Text style={[styles.creditSubLabel, { marginBottom: 0 }, isDarkMode && { color: '#CBD5E1' }]}>
+                M-PESA (SEND MONEY / POCHI LA BIASHARA)
+              </Text>
+              <TouchableOpacity
+                onPress={handleRequestSmsCapture}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
+              >
+                <Ionicons
+                  name={smsPermissionGranted ? 'radio-button-on' : 'chatbox-ellipses-outline'}
+                  size={14}
+                  color={smsPermissionGranted ? '#10B981' : (isDarkMode ? '#38BDF8' : '#0891B2')}
+                />
+                <Text
+                  style={{
+                    fontSize: 11,
+                    fontWeight: '800',
+                    color: smsPermissionGranted ? '#10B981' : (isDarkMode ? '#38BDF8' : '#0891B2'),
+                  }}
+                >
+                  {smsPermissionGranted ? 'Listening for SMS' : 'Auto-Detect SMS'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+            {autoDetectedNotice && (
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 6,
+                  backgroundColor: isDarkMode ? '#064E3B' : '#ECFDF5',
+                  borderColor: '#10B981',
+                  borderWidth: 1,
+                  borderRadius: 6,
+                  paddingHorizontal: 8,
+                  paddingVertical: 5,
+                  marginBottom: 6,
+                }}
+              >
+                <Ionicons name="checkmark-circle" size={14} color="#10B981" />
+                <Text style={{ fontSize: 11, fontWeight: '700', color: isDarkMode ? '#6EE7B7' : '#065F46' }}>
+                  {autoDetectedNotice}
+                </Text>
+              </View>
+            )}
+            <TextInput
+              style={[styles.auxInput, { marginBottom: 6 }, isDarkMode && { backgroundColor: '#0F172A', borderColor: '#334155', color: '#F8FAFC' }]}
+              placeholder="Paste or type M-Pesa Code (e.g. TJ12AB34CD)"
+              value={mpesaCode}
+              onChangeText={(t) => setMpesaCode(t.toUpperCase())}
+              autoCapitalize="characters"
+              maxLength={10}
+              placeholderTextColor={THEME.colors.textMuted}
+            />
+            <View style={{ flexDirection: 'row', gap: 6 }}>
+              <TextInput
+                style={[styles.auxInput, { flex: 1 }, isDarkMode && { backgroundColor: '#0F172A', borderColor: '#334155', color: '#F8FAFC' }]}
+                placeholder="Customer Name"
+                value={buyerName}
+                onChangeText={setBuyerName}
+                placeholderTextColor={THEME.colors.textMuted}
+              />
+              <TextInput
+                style={[styles.auxInput, { flex: 1 }, isDarkMode && { backgroundColor: '#0F172A', borderColor: '#334155', color: '#F8FAFC' }]}
+                placeholder="Phone (Optional)"
+                value={buyerPhone}
+                onChangeText={setBuyerPhone}
+                keyboardType="phone-pad"
+                placeholderTextColor={THEME.colors.textMuted}
+              />
+            </View>
           </View>
         )}
 

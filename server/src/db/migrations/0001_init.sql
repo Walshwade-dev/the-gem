@@ -273,6 +273,7 @@ CREATE TABLE IF NOT EXISTS sales (
   seller_type text NOT NULL CHECK (seller_type IN ('MASTER', 'SELLER')),
   seller_id uuid NOT NULL,
   buyer_id uuid REFERENCES buyers(id),
+  buyer_name text,
   grade text NOT NULL CHECK (grade IN ('GRADE_1', 'GRADE_2')),
   pricing_mode text NOT NULL CHECK (pricing_mode IN ('PER_NET', 'BY_WEIGHT')),
   quantity_nominal_grams int NOT NULL CHECK (quantity_nominal_grams > 0),

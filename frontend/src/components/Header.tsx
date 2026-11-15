@@ -95,6 +95,7 @@ export const Header: React.FC<HeaderProps> = ({
           </TouchableOpacity>
         </View>
       </View>
+      {isDarkMode && <View pointerEvents="none" style={styles.darkBottomBorderArc} />}
     </View>
   );
 };
@@ -113,12 +114,25 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.16,
     shadowRadius: 10,
     elevation: 4,
+    position: 'relative',
   },
   containerDark: {
     backgroundColor: '#256A71',
     shadowColor: '#0D2C30',
+  },
+  darkBottomBorderArc: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 20,
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
     borderBottomWidth: 0.75,
-    borderBottomColor: '#FDE68A',
+    borderLeftWidth: 0.75,
+    borderRightWidth: 0.75,
+    borderTopWidth: 0,
+    borderColor: '#FDE68A',
   },
   contentRow: {
     flexDirection: 'row',
