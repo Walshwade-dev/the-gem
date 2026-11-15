@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { and, desc, eq } from 'drizzle-orm';
 import {
   assignmentDailyAcknowledgments,
+  auditEvents,
   batchProducts,
   buyers,
   casualLaborers,
@@ -67,6 +68,7 @@ export async function registerSyncRoutes(app: FastifyInstance, deps: AppRouteDep
       marketSessionRows,
       activeLockdownRows,
       securityEventRows,
+      auditEventRows,
     ] = await Promise.all([
       db.select().from(masters).where(eq(masters.id, auth.masterId)).limit(1),
       db
@@ -228,6 +230,16 @@ export async function registerSyncRoutes(app: FastifyInstance, deps: AppRouteDep
             .orderBy(desc(securityEvents.createdAt))
             .limit(50)
         : Promise.resolve([]),
+      db
+        .select()
+        .from(auditEvents)
+        .where(
+          auth.role === 'MERCHANT'
+            ? eq(auditEvents.masterId, auth.masterId)
+            : and(eq(auditEvents.masterId, auth.masterId), eq(auditEvents.actorId, auth.userId))
+        )
+        .orderBy(desc(auditEvents.serverTime))
+        .limit(60),
     ]);
 
     const [master] = masterRows;
@@ -302,6 +314,7 @@ export async function registerSyncRoutes(app: FastifyInstance, deps: AppRouteDep
       marketSession: marketSession ?? null,
       isLockedDown: Boolean(activeLockdown),
       securityEvents: securityEventRows,
+      auditEvents: auditEventRows,
     });
   });
 }

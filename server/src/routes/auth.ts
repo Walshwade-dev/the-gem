@@ -599,6 +599,19 @@ export async function registerAuthRoutes(app: FastifyInstance, deps: AppRouteDep
       config.SELLER_JWT_SECRET
     );
 
+    await writeAuditEvent(db, {
+      masterId: seller.masterId,
+      actorType: 'SELLER',
+      actorId: seller.id,
+      actorRole: 'SELLER',
+      deviceId: device.id,
+      entityType: 'session',
+      entityId: session.id,
+      action: 'SELLER_LOGIN_PASSPHRASE',
+      outcome: 'SUCCESS',
+      afterState: { phoneE164: seller.phoneE164, sellerName: seller.fullName },
+    });
+
     return reply.send({
       accessToken,
       refreshToken,

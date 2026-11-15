@@ -221,6 +221,17 @@ export interface BackendSyncPayload {
     acknowledgedAt?: string | null;
   }>;
   isLockedDown: boolean;
+  auditEvents?: Array<{
+    id: string;
+    actorType: string;
+    actorId?: string | null;
+    actorRole?: string | null;
+    entityType: string;
+    action: string;
+    outcome: string;
+    afterState?: Record<string, any> | null;
+    serverTime: string;
+  }>;
 }
 
 function mapCategoryCode(code?: string): ExpenseCategory {
@@ -547,7 +558,57 @@ export function mapSyncPayloadToStore(payload: BackendSyncPayload) {
   }));
 
   const currentSeller = payload.role === 'SELLER' ? sellerMap.get(payload.userId) : undefined;
-  const activityLogs: StaffActivityLog[] = [];
+
+  const mapAuditActionType = (action: string): StaffActivityLog['actionType'] => {
+    const a = action.toUpperCase();
+    if (a.includes('LOGIN') || a.includes('OTP_VERIF')) return 'APP_LOGIN';
+    if (a.includes('ACKNOWLEDG')) return 'STOCK_ACKNOWLEDGED';
+    if (a.includes('DISCREPANCY')) return 'STOCK_DISCREPANCY_RAISED';
+    if (a.includes('REPAYMENT')) return 'CREDIT_REPAID';
+    if (a.includes('CREDIT')) return 'CREDIT_ISSUED';
+    if (a.includes('RECONCIL')) return 'COB_RECONCILIATION_SUBMITTED';
+    if (a.includes('TERMS') || a.includes('POLICY')) return 'POLICY_ACCEPTED';
+    return 'SALE_RECORDED';
+  };
+
+  const formatAuditTitle = (action: string): string =>
+    action
+      .toLowerCase()
+      .split('_')
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(' ');
+
+  const activityLogs: StaffActivityLog[] = (payload.auditEvents ?? []).map((ev) => {
+    const seller = ev.actorId ? sellerMap.get(ev.actorId) : undefined;
+    const staffName =
+      ev.actorType === 'MASTER'
+        ? (payload.master?.fullName ?? 'Master')
+        : (seller?.fullName ?? ev.afterState?.sellerName ?? 'Assigned Worker');
+    const staffRole: UserRole = ev.actorType === 'MASTER' ? 'MERCHANT' : 'SELLER';
+    const actionType = mapAuditActionType(ev.action);
+    const title = formatAuditTitle(ev.action);
+    const amountKsh =
+      typeof ev.afterState?.totalAmountCents === 'number'
+        ? `Ksh ${Math.round(ev.afterState.totalAmountCents / 100).toLocaleString()}`
+        : null;
+    const mode = ev.afterState?.paymentMode ? ` (${ev.afterState.paymentMode})` : '';
+    const descParts = [
+      amountKsh ? `${amountKsh}${mode}` : null,
+      ev.afterState?.status ? `Status: ${ev.afterState.status}` : null,
+      !amountKsh && ev.entityType ? `${ev.entityType} • ${ev.outcome}` : null,
+    ].filter(Boolean);
+
+    return {
+      id: ev.id,
+      timestamp: ev.serverTime,
+      staffName,
+      staffRole,
+      actionType,
+      title,
+      description: descParts.join(' • ') || ev.outcome,
+      metadata: ev.afterState ?? undefined,
+    };
+  });
 
   return {
     role: payload.role,

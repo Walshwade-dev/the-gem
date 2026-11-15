@@ -3286,3 +3286,31 @@ Added automatic background, tab-switch, foreground, and pull-to-refresh server s
 - [App.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/App.tsx#L126-L152)
 - [MasterBatchLedgerReceipt.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/src/components/ui/MasterBatchLedgerReceipt.tsx#L634-L659)
 - [DailyClosureReceipt.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/src/components/ui/DailyClosureReceipt.tsx#L84-L120)
+
+
+---
+
+## Report — Live Staff Audit Log Sync (`audit_events` -> `NotificationsModal`)
+
+### 1. Summary
+Connected the Staff Audit Log tab in `NotificationsModal` (`activityLogs`) to live `audit_events` from the PostgreSQL database via `/sync`, and added audit logging for seller passphrase logins so Master sees live worker activity (logins, stock acknowledgments, discrepancies, sales, credits, repayments, and revocations) updating automatically.
+
+### 2. Files Changed / Added
+- [server/src/routes/auth.ts](file:///home/wadeace/Projects/onion%20sales/server/src/routes/auth.ts#L602-L613): Added `writeAuditEvent` (`SELLER_LOGIN_PASSPHRASE`) on seller passphrase login.
+- [server/src/routes/sync.ts](file:///home/wadeace/Projects/onion%20sales/server/src/routes/sync.ts#L225-L320): Queried the latest 60 `audit_events` for the store (all for `MERCHANT`, own for `SELLER`) and returned `auditEvents` in `/sync`.
+- [frontend/src/services/syncMapper.ts](file:///home/wadeace/Projects/onion%20sales/frontend/src/services/syncMapper.ts#L223-L234) & [frontend/src/services/syncMapper.ts](file:///home/wadeace/Projects/onion%20sales/frontend/src/services/syncMapper.ts#L560-L610): Mapped `payload.auditEvents` into `activityLogs: StaffActivityLog[]` (replacing the empty `[]` placeholder).
+
+### 3. Verification
+- `npm --prefix "/home/wadeace/Projects/onion sales/server" run build` exited `0`.
+- `npx tsc --noEmit` in `frontend/` exited `0`.
+
+### 4. Open Issues / Risks
+- Rebuild/reinstall `app-release.apk` on the phone if you want the live Staff Audit Log UI on-device right away.
+
+### 5. Next Steps
+- Push to GitHub (`origin/main`) and rebuild/reinstall the APK if requested.
+
+### 6. References
+- [server/src/routes/auth.ts](file:///home/wadeace/Projects/onion%20sales/server/src/routes/auth.ts#L602-L613)
+- [server/src/routes/sync.ts](file:///home/wadeace/Projects/onion%20sales/server/src/routes/sync.ts#L225-L320)
+- [frontend/src/services/syncMapper.ts](file:///home/wadeace/Projects/onion%20sales/frontend/src/services/syncMapper.ts#L560-L610)
