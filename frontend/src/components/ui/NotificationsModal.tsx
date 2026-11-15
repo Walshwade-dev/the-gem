@@ -47,6 +47,8 @@ export const NotificationsModal: React.FC<NotificationsModalProps> = ({
   } = useAppStore();
 
   const [activeTab, setActiveTab] = useState<'ALERTS' | 'AUDIT_LOG'>('ALERTS');
+  const isMerchant = role === 'MERCHANT';
+  const effectiveTab = isMerchant ? activeTab : 'ALERTS';
 
   const pendingCredits = customerCredits.flatMap((c) =>
     c.records
@@ -133,53 +135,55 @@ export const NotificationsModal: React.FC<NotificationsModalProps> = ({
             </TouchableOpacity>
           </View>
 
-          {/* Segmented Tabs: Alerts vs Live Activity Audit Log */}
+          {/* Segmented Tabs: Alerts vs Live Activity Audit Log (Audit Log is Master-only) */}
           <View style={[styles.tabBar, isDarkMode && styles.tabBarDark]}>
             <TouchableOpacity
-              style={[styles.tabBtn, activeTab === 'ALERTS' && styles.tabBtnActive]}
+              style={[styles.tabBtn, effectiveTab === 'ALERTS' && styles.tabBtnActive]}
               onPress={() => setActiveTab('ALERTS')}
               activeOpacity={0.8}
             >
               <Ionicons
                 name="alert-circle"
                 size={14}
-                color={activeTab === 'ALERTS' ? '#FFFFFF' : (isDarkMode ? '#38BDF8' : '#0891B2')}
+                color={effectiveTab === 'ALERTS' ? '#FFFFFF' : (isDarkMode ? '#38BDF8' : '#0891B2')}
               />
               <Text
                 style={[
                   styles.tabBtnText,
                   isDarkMode && { color: '#38BDF8' },
-                  activeTab === 'ALERTS' && styles.tabBtnTextActive,
+                  effectiveTab === 'ALERTS' && styles.tabBtnTextActive,
                 ]}
               >
                 Live Alerts ({totalAlertCount})
               </Text>
             </TouchableOpacity>
 
-            <TouchableOpacity
-              style={[styles.tabBtn, activeTab === 'AUDIT_LOG' && styles.tabBtnActive]}
-              onPress={() => setActiveTab('AUDIT_LOG')}
-              activeOpacity={0.8}
-            >
-              <Ionicons
-                name="newspaper-outline"
-                size={14}
-                color={activeTab === 'AUDIT_LOG' ? '#FFFFFF' : (isDarkMode ? '#38BDF8' : '#0891B2')}
-              />
-              <Text
-                style={[
-                  styles.tabBtnText,
-                  isDarkMode && { color: '#38BDF8' },
-                  activeTab === 'AUDIT_LOG' && styles.tabBtnTextActive,
-                ]}
+            {isMerchant && (
+              <TouchableOpacity
+                style={[styles.tabBtn, effectiveTab === 'AUDIT_LOG' && styles.tabBtnActive]}
+                onPress={() => setActiveTab('AUDIT_LOG')}
+                activeOpacity={0.8}
               >
-                Staff Audit Log ({activityLogs.length})
-              </Text>
-            </TouchableOpacity>
+                <Ionicons
+                  name="newspaper-outline"
+                  size={14}
+                  color={effectiveTab === 'AUDIT_LOG' ? '#FFFFFF' : (isDarkMode ? '#38BDF8' : '#0891B2')}
+                />
+                <Text
+                  style={[
+                    styles.tabBtnText,
+                    isDarkMode && { color: '#38BDF8' },
+                    effectiveTab === 'AUDIT_LOG' && styles.tabBtnTextActive,
+                  ]}
+                >
+                  Staff Audit Log ({activityLogs.length})
+                </Text>
+              </TouchableOpacity>
+            )}
           </View>
 
           {/* Tab 1: Live Alerts */}
-          {activeTab === 'ALERTS' ? (
+          {effectiveTab === 'ALERTS' ? (
             <ScrollView style={styles.scrollList} showsVerticalScrollIndicator={false}>
               {/* 1. Pending Stock Discrepancies (Urgent alert for Master) */}
               {pendingDiscrepancies.map((disc) => (

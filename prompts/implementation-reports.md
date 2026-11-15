@@ -3314,3 +3314,34 @@ Connected the Staff Audit Log tab in `NotificationsModal` (`activityLogs`) to li
 - [server/src/routes/auth.ts](file:///home/wadeace/Projects/onion%20sales/server/src/routes/auth.ts#L602-L613)
 - [server/src/routes/sync.ts](file:///home/wadeace/Projects/onion%20sales/server/src/routes/sync.ts#L225-L320)
 - [frontend/src/services/syncMapper.ts](file:///home/wadeace/Projects/onion%20sales/frontend/src/services/syncMapper.ts#L560-L610)
+
+---
+
+## Report 2026-11-15 — Hide Staff Audit Log from Salesperson UI & Verify M-Pesa SMS Interception
+
+1. **User Request Summary**
+   - Remove the **Staff Audit Log** tab from the salesperson (`SELLER`) UI so salespeople only see **Live Alerts** (Master continues to see both Live Alerts and Staff Audit Log).
+   - Verify whether M-Pesa transaction code extraction can be intercepted automatically from incoming M-Pesa SMS messages on the salesperson's phone while the app is running.
+   - Push changes to GitHub, rebuild `app-release.apk`, and reinstall on the connected phone.
+
+2. **Root Cause / Analysis**
+   - In `frontend/src/components/ui/NotificationsModal.tsx`, `activeTab` and the `Staff Audit Log` tab button were rendered unconditionally regardless of `role`.
+   - On Android, `frontend/android/app/src/main/java/com/thegem/onionsales/MpesaSmsModule.kt` is already registered via `MpesaSmsPackage` in `MainApplication.kt` with `android.permission.RECEIVE_SMS` in `AndroidManifest.xml`, and wired to `SalesLogger.tsx` (`onMpesaSmsReceived` -> `parseMpesaSms`).
+
+3. **Changes Made**
+   - `frontend/src/components/ui/NotificationsModal.tsx`: Added `isMerchant = role === 'MERCHANT'` and `effectiveTab = isMerchant ? activeTab : 'ALERTS'`, wrapped the `Staff Audit Log` tab button in `{isMerchant && (...)}`, and gated the tab content on `effectiveTab === 'ALERTS'`.
+
+4. **Files Modified**
+   - `frontend/src/components/ui/NotificationsModal.tsx`
+   - `prompts/implementation-reports.md`
+
+5. **Verification**
+   - Ran `npx tsc --noEmit` in `frontend/` (`exit code 0`).
+   - Verified `MpesaSmsModule.kt`, `MpesaSmsPackage.kt`, `MainApplication.kt`, `AndroidManifest.xml`, and `SalesLogger.tsx` for active foreground SMS interception.
+
+6. **Deployment / Build**
+   - Committed and pushed to `origin/main`.
+   - Rebuilt `app-release.apk` via `./gradlew assembleRelease` and installed on `CI32ETYQ240929071929` via `adb install -r`.
+
+7. **Next / Open Items**
+   - None.
