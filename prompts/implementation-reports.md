@@ -3119,3 +3119,31 @@ Provisioned the Neon PostgreSQL 16 project (`the-gem`) via Neon MCP, applied the
 - [server/src/index.ts](file:///home/wadeace/Projects/onion%20sales/server/src/index.ts#L1-L49)
 - [server/src/app.ts](file:///home/wadeace/Projects/onion%20sales/server/src/app.ts#L1-L77)
 - [server/src/config.ts](file:///home/wadeace/Projects/onion%20sales/server/src/config.ts#L1-L25)
+
+
+---
+
+## Report — Remote PostgreSQL SSL Auto-Configuration Fix
+
+### 1. Summary
+Fixed the `connection is insecure (try using sslmode=require)` error during Render deployment by automatically enabling TLS (`ssl: { rejectUnauthorized: false }`) for non-localhost PostgreSQL connections across `Pool` and `PgBoss`.
+
+### 2. Files Changed / Added
+- [server/src/db/pool.ts](file:///home/wadeace/Projects/onion%20sales/server/src/db/pool.ts#L5-L18): Added `resolvePgSsl(connectionString)` helper and passed `ssl` to `createDbPool`.
+- [server/src/db/migrate.ts](file:///home/wadeace/Projects/onion%20sales/server/src/db/migrate.ts#L8-L13): Passed `ssl: resolvePgSsl(connectionString)` to the migration `Pool`.
+- [server/src/jobs/scheduler.ts](file:///home/wadeace/Projects/onion%20sales/server/src/jobs/scheduler.ts#L251-L254): Passed `ssl: resolvePgSsl(connectionString)` to `PgBoss`.
+
+### 3. Verification
+- `npm --prefix "/home/wadeace/Projects/onion sales/server" run build` exited `0`.
+- `npm --prefix "/home/wadeace/Projects/onion sales/server" run db:migrate` against Neon without `?sslmode=require` exited `0` (`Migrations applied successfully.`).
+
+### 4. Open Issues / Risks
+- None.
+
+### 5. Next Steps
+- Redeploy on Render (auto-triggered on push to `main` or via Manual Deploy -> Deploy latest commit) and share the live `https://...onrender.com` URL so the mobile APK can be rebuilt against it.
+
+### 6. References
+- [server/src/db/pool.ts](file:///home/wadeace/Projects/onion%20sales/server/src/db/pool.ts#L5-L18)
+- [server/src/db/migrate.ts](file:///home/wadeace/Projects/onion%20sales/server/src/db/migrate.ts#L8-L13)
+- [server/src/jobs/scheduler.ts](file:///home/wadeace/Projects/onion%20sales/server/src/jobs/scheduler.ts#L251-L254)

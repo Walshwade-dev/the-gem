@@ -2,11 +2,15 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Pool } from 'pg';
+import { resolvePgSsl } from './pool.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export async function runMigrations(connectionString: string, appRoleName?: string) {
-  const pool = new Pool({ connectionString });
+  const pool = new Pool({
+    connectionString,
+    ssl: resolvePgSsl(connectionString),
+  });
   try {
     const sqlPath = path.join(__dirname, 'migrations', '0001_init.sql');
     const sqlText = await fs.readFile(sqlPath, 'utf8');

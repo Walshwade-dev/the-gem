@@ -1,6 +1,6 @@
 import PgBoss from 'pg-boss';
 import { and, desc, eq, gte, isNull, lt, lte, or } from 'drizzle-orm';
-import { AppDb } from '../db/pool.js';
+import { AppDb, resolvePgSsl } from '../db/pool.js';
 import {
   assignmentDailyAcknowledgments,
   dailyExpenses,
@@ -248,7 +248,10 @@ export async function startScheduler(
   connectionString: string,
   smsProvider: SmsProvider
 ): Promise<PgBoss> {
-  const boss = new PgBoss({ connectionString });
+  const boss = new PgBoss({
+    connectionString,
+    ssl: resolvePgSsl(connectionString),
+  });
   await boss.start();
 
   await boss.createQueue('midnight-rollover');
