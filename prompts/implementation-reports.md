@@ -3195,3 +3195,33 @@ Removed all hardcoded demo fallback values in `DailyClosureReceipt.tsx` so that 
 
 ### 6. References
 - [DailyClosureReceipt.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/src/components/ui/DailyClosureReceipt.tsx#L69-L234)
+
+
+---
+
+## Report — Master-Issued Worker Login Code & Passphrase Flow
+
+### 1. Summary
+Implemented the zero-SMS-cost Master-issued 6-digit login code + worker passphrase setup flow across backend, store, Master Seller Management UI, and Worker Login UI.
+
+### 2. Files Changed / Added
+- [server/src/routes/auth.ts](file:///home/wadeace/Projects/onion%20sales/server/src/routes/auth.ts#L266-L326): Added `POST /auth/seller/invite-code` (Master-authenticated) to generate a 24-hour 6-digit `LOGIN` challenge in `otp_challenges`, audit-log `SELLER_INVITE_CODE_GENERATED`, and return the code to the Master.
+- [frontend/src/store/useAppStore.ts](file:///home/wadeace/Projects/onion%20sales/frontend/src/store/useAppStore.ts#L101-L103): Added `generateSellerInviteCode(phone)` and updated `allocateStockToSeller` ([useAppStore.ts](file:///home/wadeace/Projects/onion%20sales/frontend/src/store/useAppStore.ts#L921-L942)) to automatically generate and return `{ inviteCode }`.
+- [frontend/src/components/SellerManagementModal.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/src/components/SellerManagementModal.tsx#L129-L390): Displayed the 6-digit Worker Login Code immediately on stock assignment and added a **Get Code / New Code** button and inline code badge on each active seller card.
+- [frontend/src/components/LoginScreen.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/src/components/LoginScreen.tsx#L738-L1015): Updated the Sales Login tab so workers can directly enter their Phone + Master-issued 6-digit Login Code + optional Passphrase (min 6 chars) and log in immediately, or switch to returning Passphrase login.
+
+### 3. Verification
+- `npm --prefix "/home/wadeace/Projects/onion sales/server" run build` exited `0`.
+- `npx tsc --noEmit` in `frontend/` exited `0`.
+
+### 4. Open Issues / Risks
+- Push to `origin/main` to trigger Render redeploy for `POST /auth/seller/invite-code`, then rebuild/reinstall the mobile APK so the phone has the updated `SellerManagementModal` and `LoginScreen`.
+
+### 5. Next Steps
+- Push to GitHub and rebuild/reinstall the release APK on the phone.
+
+### 6. References
+- [server/src/routes/auth.ts](file:///home/wadeace/Projects/onion%20sales/server/src/routes/auth.ts#L266-L326)
+- [frontend/src/store/useAppStore.ts](file:///home/wadeace/Projects/onion%20sales/frontend/src/store/useAppStore.ts#L477-L495)
+- [frontend/src/components/SellerManagementModal.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/src/components/SellerManagementModal.tsx#L129-L232)
+- [frontend/src/components/LoginScreen.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/src/components/LoginScreen.tsx#L915-L1005)

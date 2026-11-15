@@ -263,6 +263,72 @@ export async function registerAuthRoutes(app: FastifyInstance, deps: AppRouteDep
     return reply.send({ ok: true, message: 'If eligible, an OTP has been sent.' });
   });
 
+  // POST /auth/seller/invite-code - Master generates a 6-digit login code for an assigned seller (no SMS required)
+  app.post(
+    '/auth/seller/invite-code',
+    { preHandler: [authenticate, requireMaster] },
+    async (request, reply) => {
+      const parsed = z
+        .object({
+          phoneE164: z.string().min(9),
+        })
+        .safeParse(request.body);
+      if (!parsed.success) return sendValidationError(reply, parsed.error);
+
+      let phoneE164: string;
+      try {
+        phoneE164 = normalizeKenyaPhoneToE164(parsed.data.phoneE164);
+      } catch {
+        return reply.code(400).send({ error: 'INVALID_KENYA_PHONE' });
+      }
+
+      const masterId = request.auth!.masterId;
+      const [seller] = await db
+        .select()
+        .from(salespeople)
+        .where(and(eq(salespeople.masterId, masterId), eq(salespeople.phoneE164, phoneE164)))
+        .limit(1);
+
+      if (!seller) {
+        return reply.code(404).send({ error: 'SELLER_NOT_FOUND' });
+      }
+      if (seller.status === 'REVOKED' || seller.status === 'SUSPENDED') {
+        return reply.code(403).send({ error: 'SELLER_INACTIVE' });
+      }
+
+      const code = generateSixDigitOtp();
+      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+      await db.insert(otpChallenges).values({
+        masterId,
+        phoneE164,
+        codeHash: sha256Hex(code),
+        purpose: 'LOGIN',
+        expiresAt,
+        maxAttempts: 5,
+      });
+
+      await writeAuditEvent(db, {
+        masterId,
+        actorType: 'MASTER',
+        actorId: request.auth!.userId,
+        action: 'SELLER_INVITE_CODE_GENERATED',
+        outcome: 'SUCCESS',
+        entityType: 'salesperson',
+        entityId: seller.id,
+        afterState: { phoneE164, expiresAt: expiresAt.toISOString() },
+      });
+
+      return reply.send({
+        ok: true,
+        code,
+        expiresAt: expiresAt.toISOString(),
+        phoneE164,
+        sellerName: seller.fullName,
+      });
+    }
+  );
+
   // POST /auth/seller/otp/verify
   app.post('/auth/seller/otp/verify', async (request, reply) => {
     const parsed = z

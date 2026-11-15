@@ -29,7 +29,7 @@ export const SellerManagementModal: React.FC<SellerManagementModalProps> = ({
   onClose,
   onNavigateToProducts 
 }) => {
-  const { currentBatch, allocations, allocateStockToSeller, isDarkMode } = useAppStore();
+  const { currentBatch, allocations, allocateStockToSeller, generateSellerInviteCode, isDarkMode } = useAppStore();
 
   const [sellerName, setSellerName] = useState<string>('Juma (Sales Assistant)');
   const [sellerPhone, setSellerPhone] = useState<string>('0799887766');
@@ -37,6 +37,8 @@ export const SellerManagementModal: React.FC<SellerManagementModalProps> = ({
   const [g2Allocated, setG2Allocated] = useState<string>('20');
   const [g1TargetPrice, setG1TargetPrice] = useState<string>('1300');
   const [g2TargetPrice, setG2TargetPrice] = useState<string>('1200');
+  const [issuedCodes, setIssuedCodes] = useState<Record<string, string>>({});
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
   // Prepopulate prices and sensible quotas from active batch
   useEffect(() => {
@@ -124,7 +126,21 @@ export const SellerManagementModal: React.FC<SellerManagementModalProps> = ({
     );
   }
 
-  const handleAllocate = () => {
+  const handleIssueLoginCode = async (phone: string, name: string) => {
+    const res = await generateSellerInviteCode(phone);
+    if (res.success && res.code) {
+      setIssuedCodes((prev) => ({ ...prev, [phone]: res.code! }));
+      Alert.alert(
+        '🔑 Worker Login Code',
+        `Share this 6-digit login code with ${name} (${phone}):\n\n${res.code}\n\nValid for 24 hours. They can enter it on the Sales Login tab and set their own passphrase.`
+      );
+    } else {
+      Alert.alert('Could Not Generate Code', res.message || 'Please try again.');
+    }
+  };
+
+  const handleAllocate = async () => {
+    if (isSubmitting) return;
     if (!currentBatch || (!currentBatch.remainingGrade1Nets && !currentBatch.remainingGrade2Nets)) {
       Alert.alert(
         '⚠️ No Stock Added',
@@ -184,21 +200,36 @@ export const SellerManagementModal: React.FC<SellerManagementModalProps> = ({
       return;
     }
 
-    allocateStockToSeller({
-      sellerId: `usr-seller-${Date.now()}`,
-      sellerName: cleanSellerName,
-      sellerPhone: cleanSellerPhone,
-      grade1Allocated: g1,
-      grade2Allocated: g2,
-      expectedPriceG1: p1,
-      expectedPriceG2: p2,
-    });
+    setIsSubmitting(true);
+    try {
+      const result = await allocateStockToSeller({
+        sellerId: `usr-seller-${Date.now()}`,
+        sellerName: cleanSellerName,
+        sellerPhone: cleanSellerPhone,
+        grade1Allocated: g1,
+        grade2Allocated: g2,
+        expectedPriceG1: p1,
+        expectedPriceG2: p2,
+      });
 
-    Alert.alert(
-      '✅ Seller Assigned & Activated',
-      `${cleanSellerName} assigned ${g1} G1 nets & ${g2} G2 nets.\nPhone registered: ${cleanSellerPhone}.\n\nThe seller will see this exact assigned quantity on their terminal!`
-    );
-    onClose();
+      if (result?.inviteCode) {
+        setIssuedCodes((prev) => ({ ...prev, [cleanSellerPhone]: result.inviteCode! }));
+      }
+
+      Alert.alert(
+        '✅ Seller Assigned & Activated',
+        result?.inviteCode
+          ? `${cleanSellerName} assigned ${g1} G1 nets & ${g2} G2 nets.\nPhone: ${cleanSellerPhone}\n\n🔑 Worker Login Code: ${result.inviteCode}\nShare this 6-digit code with ${cleanSellerName} so they can log in and set their passphrase.`
+          : `${cleanSellerName} assigned ${g1} G1 nets & ${g2} G2 nets.\nPhone registered: ${cleanSellerPhone}.`
+      );
+    } catch (err) {
+      Alert.alert(
+        'Assignment Failed',
+        err instanceof Error ? err.message : 'Unable to assign stock to seller.'
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -312,14 +343,39 @@ export const SellerManagementModal: React.FC<SellerManagementModalProps> = ({
 
             {/* Existing Allocations */}
             <Text style={[styles.listHeader, isDarkMode && styles.textWhite]}>ACTIVE SELLER ALLOCATIONS</Text>
-            {allocations.map(alloc => (
+            {allocations.map(alloc => {
+              const codeForSeller = issuedCodes[alloc.sellerPhone];
+              return (
               <View key={alloc.id} style={[styles.allocCard, isDarkMode && styles.allocCardDark]}>
                 <View style={styles.allocHeader}>
-                  <View>
+                  <View style={{ flex: 1 }}>
                     <Text style={[styles.allocName, isDarkMode && styles.textWhite]}>{alloc.sellerName}</Text>
-                    <Text style={styles.allocPhoneText}>Phone: {alloc.sellerPhone || '0799887766'} (OTP Authorized)</Text>
+                    <Text style={styles.allocPhoneText}>Phone: {alloc.sellerPhone || 'N/A'}</Text>
+                    {codeForSeller ? (
+                      <Text style={{ fontSize: 12, fontWeight: '800', color: '#10B981', marginTop: 2 }}>
+                        Login Code: {codeForSeller} (Share with worker)
+                      </Text>
+                    ) : null}
                   </View>
-                  <Text style={[styles.allocDate, isDarkMode && styles.textMuted]}>{alloc.date}</Text>
+                  <TouchableOpacity
+                    onPress={() => handleIssueLoginCode(alloc.sellerPhone, alloc.sellerName)}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 4,
+                      backgroundColor: isDarkMode ? '#143D42' : '#E0F2FE',
+                      borderWidth: 1,
+                      borderColor: isDarkMode ? 'rgba(122, 181, 188, 0.45)' : '#BAE6FD',
+                      paddingHorizontal: 10,
+                      paddingVertical: 6,
+                      borderRadius: 8,
+                    }}
+                  >
+                    <Ionicons name="key-outline" size={13} color={isDarkMode ? '#5EEAD4' : '#0891B2'} />
+                    <Text style={{ fontSize: 11, fontWeight: '800', color: isDarkMode ? '#5EEAD4' : '#0891B2' }}>
+                      {codeForSeller ? 'New Code' : 'Get Code'}
+                    </Text>
+                  </TouchableOpacity>
                 </View>
 
                 <View style={styles.allocGrid}>
@@ -340,7 +396,8 @@ export const SellerManagementModal: React.FC<SellerManagementModalProps> = ({
                   </View>
                 </View>
               </View>
-            ))}
+              );
+            })}
           </ScrollView>
         </View>
       </View>

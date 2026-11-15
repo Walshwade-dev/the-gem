@@ -736,8 +736,19 @@ export const LoginScreen: React.FC = () => {
   };
 
   const handleVerifySellerOtp = async () => {
+    if (!sellerPhone.trim()) {
+      Alert.alert('Phone Required', 'Please enter your mobile phone number.');
+      return;
+    }
     if (!otpCode.trim() || otpCode.trim().length < 6) {
-      Alert.alert('Invalid OTP', 'Please enter the 6-digit SMS verification code.');
+      Alert.alert('Invalid Code', 'Please enter the 6-digit login code from Master.');
+      return;
+    }
+    if (sellerPassphrase.trim() && sellerPassphrase.trim().length < 6) {
+      Alert.alert(
+        'Passphrase Too Short',
+        'Passphrase must be at least 6 characters (or leave it blank to skip).'
+      );
       return;
     }
 
@@ -919,7 +930,6 @@ export const LoginScreen: React.FC = () => {
                       keyboardType="phone-pad"
                       value={sellerPhone}
                       onChangeText={setSellerPhone}
-                      editable={!otpSent}
                     />
                   </View>
                 </View>
@@ -956,20 +966,20 @@ export const LoginScreen: React.FC = () => {
                     <View style={styles.inputGroup}>
                       <View style={styles.otpLabelRow}>
                         <Text style={[styles.inputLabel, isDarkMode && { color: '#E2E8F0' }]}>
-                          {otpSent ? 'ENTER 6-DIGIT SMS VERIFICATION CODE' : 'SMS VERIFICATION CODE'}
+                          6-DIGIT LOGIN CODE (FROM MASTER)
                         </Text>
                       </View>
-                      <View style={[styles.inputContainer, isDarkMode && styles.inputContainerDark, !otpSent && styles.inputContainerDimmed]}>
+                      <View style={[styles.inputContainer, isDarkMode && styles.inputContainerDark]}>
                         <Ionicons
                           name="keypad-outline"
                           size={18}
-                          color={otpSent ? '#D97706' : (isDarkMode ? '#64748B' : '#94A3B8')}
+                          color="#0891B2"
                           style={styles.inputIcon}
                         />
                         <TextInput
                           style={[styles.inputField, isDarkMode && { color: '#F8FAFC' }]}
-                          placeholder={otpSent ? 'Enter 6-digit code' : 'Click Generate OTP below'}
-                          placeholderTextColor={isDarkMode ? '#475569' : '#94A3B8'}
+                          placeholder="Enter 6-digit code from Master"
+                          placeholderTextColor={isDarkMode ? '#9AC7CC' : '#94A3B8'}
                           keyboardType="number-pad"
                           maxLength={6}
                           value={otpCode}
@@ -978,25 +988,41 @@ export const LoginScreen: React.FC = () => {
                       </View>
                     </View>
 
-                    {!otpSent ? (
-                      <TouchableOpacity
-                        style={styles.sellerSubmitBtn}
-                        onPress={handleRequestSellerOtp}
-                        activeOpacity={0.8}
-                      >
-                        <Ionicons name="paper-plane" size={18} color="#FFFFFF" />
-                        <Text style={styles.sellerSubmitBtnText}>GENERATE SMS OTP</Text>
-                      </TouchableOpacity>
-                    ) : (
-                      <TouchableOpacity
-                        style={styles.sellerSubmitBtn}
-                        onPress={handleVerifySellerOtp}
-                        activeOpacity={0.8}
-                      >
-                        <Ionicons name="checkmark-circle" size={19} color="#FFFFFF" />
-                        <Text style={styles.sellerSubmitBtnText}>VERIFY OTP & LOGIN</Text>
-                      </TouchableOpacity>
-                    )}
+                    <View style={styles.inputGroup}>
+                      <Text style={[styles.inputLabel, isDarkMode && { color: '#E2E8F0' }]}>
+                        SET YOUR PASSPHRASE (OPTIONAL, MIN 6 CHARS)
+                      </Text>
+                      <View style={[styles.inputContainer, isDarkMode && styles.inputContainerDark]}>
+                        <Ionicons name="lock-closed-outline" size={18} color="#0891B2" style={styles.inputIcon} />
+                        <TextInput
+                          style={[styles.inputField, isDarkMode && { color: '#F8FAFC' }]}
+                          placeholder="Choose a passphrase for next login"
+                          placeholderTextColor={isDarkMode ? '#9AC7CC' : '#94A3B8'}
+                          secureTextEntry
+                          value={sellerPassphrase}
+                          onChangeText={setSellerPassphrase}
+                        />
+                      </View>
+                    </View>
+
+                    <TouchableOpacity
+                      style={styles.sellerSubmitBtn}
+                      onPress={handleVerifySellerOtp}
+                      activeOpacity={0.8}
+                    >
+                      <Ionicons name="checkmark-circle" size={19} color="#FFFFFF" />
+                      <Text style={styles.sellerSubmitBtnText}>VERIFY CODE & LOGIN</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={{ alignItems: 'center', marginTop: 10 }}
+                      onPress={handleRequestSellerOtp}
+                      disabled={countdown > 0}
+                    >
+                      <Text style={[styles.demoHelperText, { fontSize: 12 }]}>
+                        {countdown > 0 ? `SMS OTP sent (${countdown}s)` : 'Request code via SMS instead'}
+                      </Text>
+                    </TouchableOpacity>
                   </>
                 )}
 
@@ -1009,29 +1035,11 @@ export const LoginScreen: React.FC = () => {
                 >
                   <Ionicons name="key-outline" size={13} color="#0891B2" />
                   <Text style={styles.demoHelperText}>
-                    {usePassphraseMode ? 'Use SMS OTP instead' : 'Sign in with Passphrase instead'}
+                    {usePassphraseMode
+                      ? 'First time or forgot? Use 6-Digit Login Code'
+                      : 'Already set a passphrase? Sign in with Passphrase'}
                   </Text>
                 </TouchableOpacity>
-
-                {otpSent && !usePassphraseMode && (
-                  <View style={styles.resendRow}>
-                    <TouchableOpacity
-                      onPress={handleRequestSellerOtp}
-                      disabled={countdown > 0}
-                      style={{ opacity: countdown > 0 ? 0.5 : 1 }}
-                    >
-                      <Text style={[styles.resendText, isDarkMode && { color: '#22D3EE' }]}>
-                        {countdown > 0 ? `Resend in ${countdown}s` : 'Resend Code'}
-                      </Text>
-                    </TouchableOpacity>
-                    <Text style={{ color: '#94A3B8' }}>•</Text>
-                    <TouchableOpacity onPress={() => { setOtpSent(false); setOtpCode(''); }}>
-                      <Text style={[styles.changePhoneText, isDarkMode && { color: '#94A3B8' }]}>
-                        Change Number
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
                 </View>
               )}
             </Animated.View>

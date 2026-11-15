@@ -98,6 +98,9 @@ export interface AppState {
     phone: string,
     passphrase: string
   ) => Promise<{ success: boolean; message: string; sellerName?: string }>;
+  generateSellerInviteCode: (
+    phone: string
+  ) => Promise<{ success: boolean; code?: string; expiresAt?: string; message?: string }>;
   logout: () => Promise<void>;
   lockdown: (reason: string) => Promise<void>;
   unlock: () => Promise<{ success: boolean; message: string }>;
@@ -188,7 +191,7 @@ export interface AppState {
     grade2Allocated: number;
     expectedPriceG1: number;
     expectedPriceG2: number;
-  }) => Promise<void>;
+  }) => Promise<{ inviteCode?: string }>;
   updateSellerNationalId: (sellerId: string, nationalId: string) => Promise<void>;
 
   // Expenses & Deductions
@@ -470,6 +473,25 @@ export const useAppStore = create<AppState>()(
           return {
             success: false,
             message: err instanceof Error ? err.message : 'Failed to request OTP',
+          };
+        }
+      },
+
+      generateSellerInviteCode: async (phone) => {
+        try {
+          const res = await apiFetch<{
+            ok: boolean;
+            code: string;
+            expiresAt: string;
+          }>('/auth/seller/invite-code', {
+            method: 'POST',
+            body: { phoneE164: phone },
+          });
+          return { success: true, code: res.code, expiresAt: res.expiresAt };
+        } catch (err) {
+          return {
+            success: false,
+            message: err instanceof Error ? err.message : 'Failed to generate login code',
           };
         }
       },
@@ -898,7 +920,7 @@ export const useAppStore = create<AppState>()(
 
       allocateStockToSeller: async (params) => {
         const batch = get().currentBatch;
-        if (!batch) return;
+        if (!batch) return {};
         const pkgGrams = (batch.packagingKg ?? 20) * 1000;
         await apiFetch('/assignments', {
           method: 'POST',
@@ -915,6 +937,8 @@ export const useAppStore = create<AppState>()(
           },
         });
         await get().syncFromServer();
+        const invite = await get().generateSellerInviteCode(params.sellerPhone);
+        return { inviteCode: invite.code };
       },
 
       updateSellerNationalId: async (sellerId, nationalId) => {
