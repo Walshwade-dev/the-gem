@@ -59,18 +59,39 @@ Designed for non-technical users in fast-paced, high-volume market environments,
 
 ## 🚀 Getting Started & Local Development
 
-### Installation
+### 1. Backend (`server/`)
 ```bash
+cd server
 npm install
+npm run dev:local   # Starts Fastify on http://0.0.0.0:3001 with local PGlite (.local-pgdata)
 ```
 
-### Running Locally
+### 2. Frontend (`frontend/`)
 ```bash
-# Start local development server (Web & Mobile)
+cd frontend
+npm install
+# Start Web + Metro with ngrok tunnel for direct physical-phone testing in Expo Go
+npm run tunnel
+# Or standard local dev server (Web & LAN/Emulator)
 npm run web
-# Or start with Expo QR for mobile device
-npx expo start
 ```
+
+### 3. Physical Phone & Emulator Testing Notes
+- **Environment:** Set `EXPO_PUBLIC_API_URL=http://<YOUR_LAN_IP>:3001` and `EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY` in `frontend/.env.local`.
+- **Firewall (Linux/ufw):** Allow port `3001` so your phone on the same Wi-Fi can reach the local backend:
+  ```bash
+  sudo ufw allow 3001/tcp
+  ```
+- **Verify Reachability:** Open `http://<YOUR_LAN_IP>:3001/health` (explicit `http://`, **not** `https://`) in your phone's browser and confirm `{"status":"ok"}`.
+- **Android Emulator:** Forward ports if needed with `adb reverse tcp:8081 tcp:8081 && adb reverse tcp:3001 tcp:3001`.
+
+### 4. Clerk Authentication & Troubleshooting Reference
+- **SDK Version:** Uses `@clerk/expo` (Core 3) instead of the deprecated `@clerk/clerk-expo` (which Clerk's API rejects with *"outdated version of Clerk"*). `ClerkProvider`, `useAuth`, `useClerk`, and `useSSO` come from `@clerk/expo`; `useSignIn` comes from `@clerk/expo/legacy`.
+- **Web Google OAuth:** Uses `signIn.authenticateWithRedirect` + `clerk.handleRedirectCallback({})` in `ClerkAuthBridge` (`frontend/App.tsx`) rather than `WebBrowser.openAuthSessionAsync` popups (which fail under Google's `Cross-Origin-Opener-Policy`).
+- **Expo Go Google OAuth Redirect:** Expo Go only intercepts `exp://` deep links, not custom `thegem://` schemes. `LoginScreen.tsx` builds `exp://${Constants.expoGoConfig.debuggerHost}/--/oauth-callback` in Expo Go and falls back to `AuthSession.makeRedirectUri({ scheme: 'thegem', path: 'oauth-callback' })` for standalone/dev builds.
+- **Email + Password `needs_client_trust`:** New mobile devices trigger Clerk's Client Trust second-factor email OTP (`status: 'needs_client_trust'`). `LoginScreen.tsx` calls `signIn.prepareSecondFactor({ strategy: 'email_code', emailAddressId })`, renders the verification code screen, and completes login with `signIn.attemptSecondFactor`.
+- **Backend CORS & Request Timeout:** `@fastify/cors` is registered in `server/src/app.ts` for Web requests; `apiFetch` in `frontend/src/services/api.ts` routes `localhost` Web requests to `http://localhost:3001` and enforces a 12-second `AbortController` timeout so unreachable backends surface an error instead of hanging on `CONNECTING...`.
+- **Web Error Visibility:** `Alert.alert` is a no-op in `react-native-web`, so `LoginScreen.tsx` renders an inline error banner alongside `Alert.alert`.
 
 ---
 
@@ -107,35 +128,46 @@ Render will automatically detect `render.yaml`, set up the build command (`npm i
 
 ```
 onion sales/
-├── App.tsx                     # Main application container & screen coordinator
-├── index.ts                    # Entry point registered with Expo
-├── app.json                    # Expo configuration
-├── package.json                # Project dependencies
-└── src/
-    ├── types/
-    │   ├── index.ts            # Domain models (TruckBatch, Sales, Credit, Reconciliation)
-    │   └── regions.ts          # Hierarchical origin regions (Kenya & Tanzania)
-    ├── constants/
-    │   ├── theme.ts            # High-contrast daylight design tokens & jewel palette
-    │   └── config.ts           # Market fee rates, demurrage, security parameters
-    ├── services/
-    │   ├── reconciliation.ts   # Pure domain reconciliation math engine
-    │   └── security.ts         # Phone OTP auth, phone masking, and emergency lockdown
-    ├── store/
-    │   └── useAppStore.ts      # Central Zustand store (Offline-first state machine)
-    └── components/
-        ├── Header.tsx                 # Branding, role switcher, credit pill & panic killswitch
-        ├── BatchOverviewCard.tsx      # Truck arrival, cess, stock progress & origin card
-        ├── SalesLogger.tsx            # Dynamic bargaining, grade picker & payment logger
-        ├── FinancialSummaryCard.tsx   # Real-time Cash/M-Pesa drawer & COB reconciler trigger
-        ├── ReconciliationModal.tsx    # 14:00 COB physical bag count & cash balance audit
-        ├── CreditLedgerModal.tsx      # Customer debt management & debt collection
-        ├── NewBatchModal.tsx          # 05:00 AM truck onboarding & origin picker
-        ├── ExpensesLaborModal.tsx     # Casual labor (vibarua) & fixed daily expenses
-        ├── SellerManagementModal.tsx  # Hired seller quota allocation & target prices
-        ├── AuthModal.tsx              # Phone + SMS OTP verification modal
-        └── LockdownScreen.tsx         # High-security breach & panic freeze screen
+├── frontend/                   # Expo SDK 58 / React Native 0.88 client (Web, Android, iOS)
+│   ├── App.tsx                 # Main application coordinator, Clerk Core 3 auth bridge & modals
+│   ├── index.ts                # Expo entry point
+│   ├── app.json                # Expo configuration
+│   ├── package.json            # Frontend dependencies & build scripts
+│   └── src/
+│       ├── types/              # Domain models (TruckBatch, Sales, Credit, Reconciliation, Regions)
+│       ├── constants/          # Coolors dark/light theme tokens & market configuration
+│       ├── services/           # API client (12s timeout), reconciliation engine, security & OTP auth
+│       ├── store/              # Zustand state store with in-flight sync deduplication & persistence
+│       └── components/
+│           ├── Header.tsx                 # Branding, role switcher, credit alert pill & killswitch
+│           ├── LiquidGlassBottomBar.tsx   # Compact 40px icon-only floating tab bar with tap toast
+│           ├── BatchOverviewCard.tsx      # Truck arrival, cess, stock progress & origin card
+│           ├── SalesLogger.tsx            # Bargaining, grade picker & Master-governed payment modes
+│           ├── FinancialSummaryCard.tsx   # Real-time Cash/M-Pesa drawer & COB reconciler trigger
+│           ├── CreditRecordsView.tsx      # Active debt tracking, high-risk exposure & SOP links
+│           ├── DailyClosureReceipt.tsx    # Master COB receipt, Live Audit Stream & approval controls
+│           ├── MasterBatchLedgerReceipt.tsx # Master batch ledger & expense/labor breakdown
+│           └── UserProfileSection.tsx     # Profile, policy links, Sign Out & store payment mode toggles
+└── server/                     # Node.js / Express / Drizzle ORM + PostgreSQL backend API
+    ├── package.json            # Backend dependencies, Vitest acceptance suite & dev:local script
+    └── src/
+        ├── db/                 # Drizzle schema, migrations & pg/pglite connection
+        ├── middleware/         # Clerk JWT & seller token verification, CORS & rate limiting
+        ├── routes/             # REST endpoints (/sync, /batches, /sales, /credit, /auth, etc.)
+        └── tests/              # Phase 2A backend acceptance tests (Vitest + PGlite)
 ```
+
+---
+
+## ✨ Recent Updates & Performance Improvements
+
+- **UI & Dark Mode Consistency (Coolors Palette):** Unified dark mode surfaces (`#1D575D`, `#256A71`, `#1B4F55`) with `#FDE68A` accent outlines/badges, `#EE6C4D` high-risk credit exposure, and `#F0FDFA`/`#CFE9EC` high-contrast typography across `Header`, `DailyClosureReceipt`, `MasterBatchLedgerReceipt`, `CreditRecordsView`, `BatchOverviewCard`, and `UserProfileSection`.
+- **Master Payment Mode Governance:** Masters can toggle accepted payment modes (`Cash`, `M-Pesa`, `Credit / Madeni`) from the Profile tab (`UserProfileSection`), immediately governing available payment options in `SalesLogger`.
+- **Navigation & Receipt Refinements:** Compact `40px` icon-only `LiquidGlassBottomBar` with brief tap feedback labels; streamlined `DailyClosureReceipt` with matched Live Audit Stream styling and legible section totals.
+- **Speed & Render Optimizations:**
+  - Parallelized `/sync` database reads in `server/src/routes/sync.ts` via `Promise.all` (replacing ~21 sequential queries and per-row ledger awaits).
+  - Added in-flight `syncFromServer` promise deduplication in `frontend/src/store/useAppStore.ts` to prevent duplicate `/sync` network requests.
+  - Switched high-frequency components (`MainScreen`, `Header`, `BatchOverviewCard`, `FinancialSummaryCard`, `SalesLogger`) to targeted `useShallow` Zustand selectors and `useMemo` derived values.
 
 ---
 
