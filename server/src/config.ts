@@ -16,6 +16,9 @@ const EnvSchema = z.object({
   AFRICASTALKING_USERNAME: z.string().optional(),
   AFRICASTALKING_SENDER_ID: z.string().default('THEGEM'),
   EXPO_PUSH_ACCESS_TOKEN: z.string().optional(),
+  INTASEND_SECRET_KEY: z.string().optional(),
+  INTASEND_PUBLISHABLE_KEY: z.string().optional(),
+  INTASEND_WEBHOOK_CHALLENGE: z.string().optional(),
 });
 
 export type AppConfig = z.infer<typeof EnvSchema>;

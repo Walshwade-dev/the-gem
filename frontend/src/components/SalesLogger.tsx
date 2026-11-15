@@ -18,6 +18,7 @@ import {
   NativeModules,
   Animated,
   Easing,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { THEME } from '../constants/theme';
@@ -25,7 +26,7 @@ import { ProduceGrade, PaymentMethod } from '../types';
 import { useShallow } from 'zustand/react/shallow';
 import { useAppStore } from '../store/useAppStore';
 import { MARKET_CONFIG } from '../constants/config';
-import { getApiBaseUrl } from '../services/api';
+import { apiFetch, getApiBaseUrl } from '../services/api';
 
 export const SalesLogger: React.FC = () => {
   const { 
@@ -142,6 +143,108 @@ export const SalesLogger: React.FC = () => {
   const [smsPermissionGranted, setSmsPermissionGranted] = useState<boolean>(false);
   const [autoDetectedNotice, setAutoDetectedNotice] = useState<string | null>(null);
   const lastHandledSmsIdRef = useRef<string | null>(null);
+  const [stkState, setStkState] = useState<{
+    status: 'IDLE' | 'SENDING' | 'WAITING' | 'COMPLETE' | 'FAILED';
+    requestId?: string;
+    message?: string;
+  }>({ status: 'IDLE' });
+
+  useEffect(() => {
+    if (stkState.status !== 'WAITING' || !stkState.requestId) return;
+    let cancelled = false;
+    let attempts = 0;
+
+    const timer = setInterval(async () => {
+      if (cancelled) return;
+      attempts += 1;
+      try {
+        const res = await apiFetch<{
+          status: 'PENDING' | 'PROCESSING' | 'COMPLETE' | 'FAILED';
+          mpesaReceipt?: string | null;
+          invoiceId?: string | null;
+          failedReason?: string | null;
+        }>(`/mpesa/stk-status/${stkState.requestId}`);
+
+        if (cancelled) return;
+        if (res.status === 'COMPLETE') {
+          const code = (res.mpesaReceipt || res.invoiceId || '').toUpperCase().slice(0, 10);
+          if (code) setMpesaCode(code);
+          setAutoDetectedNotice(`STK Paid${code ? ` • ${code}` : ''}`);
+          setStkState({
+            status: 'COMPLETE',
+            requestId: stkState.requestId,
+            message: `M-Pesa payment confirmed${code ? ` (${code})` : ''}`,
+          });
+        } else if (res.status === 'FAILED') {
+          setStkState({
+            status: 'FAILED',
+            requestId: stkState.requestId,
+            message: res.failedReason || 'Customer cancelled or M-Pesa prompt failed.',
+          });
+        } else if (attempts >= 20) {
+          setStkState({
+            status: 'FAILED',
+            requestId: stkState.requestId,
+            message: 'Timed out waiting for M-Pesa PIN. Ask customer or retry.',
+          });
+        }
+      } catch {
+        if (attempts >= 20 && !cancelled) {
+          setStkState({
+            status: 'FAILED',
+            requestId: stkState.requestId,
+            message: 'Could not verify STK status. Check SMS or retry.',
+          });
+        }
+      }
+    }, 3000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [stkState.status, stkState.requestId]);
+
+  const handleSendStkPush = async () => {
+    const cleanPhone = buyerPhone.trim();
+    if (cleanPhone.replace(/\D/g, '').length < 9) {
+      Alert.alert('Customer Phone Needed', 'Enter the customer M-Pesa phone number (e.g. 0712345678) first.');
+      return;
+    }
+    const qty = quantity || 0;
+    const price = parseFloat(unitPrice) || 0;
+    const amountKsh = Math.round(qty * price);
+    if (amountKsh <= 0) {
+      Alert.alert('Invalid Amount', 'Enter quantity and unit price before sending an M-Pesa prompt.');
+      return;
+    }
+
+    setStkState({ status: 'SENDING', message: 'Sending M-Pesa prompt...' });
+    try {
+      const res = await apiFetch<{
+        requestId: string;
+        phoneE164: string;
+        amountKsh: number;
+      }>('/mpesa/stk-push', {
+        method: 'POST',
+        body: {
+          phoneNumber: cleanPhone,
+          amountKsh,
+          batchId: currentBatch?.id,
+          assignmentId: isSeller ? sellerAllocation?.id : undefined,
+        },
+      });
+      setStkState({
+        status: 'WAITING',
+        requestId: res.requestId,
+        message: `Prompt sent to ${res.phoneE164} for Ksh ${res.amountKsh.toLocaleString()}. Waiting for PIN...`,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to send STK Push';
+      setStkState({ status: 'FAILED', message: msg });
+      Alert.alert('STK Push Failed', msg);
+    }
+  };
 
   const parseMpesaSms = (raw: string) => {
     const text = raw.trim();
@@ -842,13 +945,87 @@ export const SalesLogger: React.FC = () => {
               />
               <TextInput
                 style={[styles.auxInput, { flex: 1 }, isDarkMode && styles.auxInputDark]}
-                placeholder="Phone (Optional)"
+                placeholder="Phone (for STK)"
                 value={buyerPhone}
                 onChangeText={setBuyerPhone}
                 keyboardType="phone-pad"
                 placeholderTextColor={isDarkMode ? '#9AC7CC' : THEME.colors.textMuted}
               />
             </View>
+            <TouchableOpacity
+              onPress={handleSendStkPush}
+              disabled={stkState.status === 'SENDING' || stkState.status === 'WAITING'}
+              activeOpacity={0.85}
+              style={{
+                marginTop: 8,
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+                backgroundColor: stkState.status === 'WAITING' ? '#0F766E' : '#10B981',
+                borderRadius: 10,
+                paddingVertical: 10,
+                paddingHorizontal: 12,
+                opacity: stkState.status === 'SENDING' ? 0.7 : 1,
+              }}
+            >
+              {stkState.status === 'SENDING' || stkState.status === 'WAITING' ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <Ionicons name="phone-portrait-outline" size={16} color="#FFFFFF" />
+              )}
+              <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '800', letterSpacing: 0.4 }}>
+                {stkState.status === 'SENDING'
+                  ? 'SENDING M-PESA PROMPT...'
+                  : stkState.status === 'WAITING'
+                    ? 'WAITING FOR CUSTOMER PIN...'
+                    : 'SEND M-PESA STK PROMPT'}
+              </Text>
+            </TouchableOpacity>
+            {stkState.status !== 'IDLE' && stkState.message && (
+              <View
+                style={{
+                  marginTop: 6,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 6,
+                  backgroundColor:
+                    stkState.status === 'FAILED'
+                      ? (isDarkMode ? '#3B181C' : '#FEF2F2')
+                      : (isDarkMode ? '#1B4F55' : '#ECFDF5'),
+                  borderColor: stkState.status === 'FAILED' ? '#EF4444' : '#10B981',
+                  borderWidth: 1,
+                  borderRadius: 10,
+                  paddingHorizontal: 10,
+                  paddingVertical: 6,
+                }}
+              >
+                <Ionicons
+                  name={
+                    stkState.status === 'COMPLETE'
+                      ? 'checkmark-circle'
+                      : stkState.status === 'FAILED'
+                        ? 'alert-circle'
+                        : 'time-outline'
+                  }
+                  size={14}
+                  color={stkState.status === 'FAILED' ? '#EF4444' : '#10B981'}
+                />
+                <Text
+                  style={{
+                    flex: 1,
+                    fontSize: 11,
+                    fontWeight: '700',
+                    color:
+                      stkState.status === 'FAILED'
+                        ? (isDarkMode ? '#FCA5A5' : '#991B1B')
+                        : (isDarkMode ? '#A7F3D0' : '#065F46'),
+                  }}
+                >
+                  {stkState.message}
+                </Text>
+              </View>
+            )}
           </View>
         )}
 

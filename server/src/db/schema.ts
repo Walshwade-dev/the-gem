@@ -570,3 +570,26 @@ export const idempotencyKeys = pgTable(
   },
   (t) => [primaryKey({ columns: [t.key, t.actorId, t.route] })]
 );
+
+export const mpesaStkRequests = pgTable('mpesa_stk_requests', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  masterId: uuid('master_id')
+    .notNull()
+    .references(() => masters.id),
+  batchId: uuid('batch_id').references(() => truckBatches.id),
+  assignmentId: uuid('assignment_id').references(() => stockAssignments.id),
+  initiatedByType: text('initiated_by_type').notNull(),
+  initiatedById: uuid('initiated_by_id').notNull(),
+  provider: text('provider').notNull().default('INTASEND'),
+  invoiceId: text('invoice_id').unique(),
+  apiRef: text('api_ref').notNull().unique(),
+  phoneE164: text('phone_e164').notNull(),
+  amountCents: integer('amount_cents').notNull(),
+  status: text('status').notNull().default('PENDING'),
+  mpesaReceipt: text('mpesa_receipt'),
+  failedCode: text('failed_code'),
+  failedReason: text('failed_reason'),
+  rawResponse: jsonb('raw_response'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});

@@ -3409,3 +3409,39 @@ Connected the Staff Audit Log tab in `NotificationsModal` (`activityLogs`) to li
 
 7. **Next / Open Items**
    - None.
+
+---
+
+## Report 2026-11-16 — IntaSend M-Pesa STK Push Integration
+
+1. **User Request Summary**
+   - Implement M-Pesa STK Push using **IntaSend** (since the merchant does not have a Safaricom Paybill or Till), with secure webhook verification.
+
+2. **Root Cause / Analysis**
+   - Added IntaSend STK Push endpoints on the backend (`server/src/routes/mpesa.ts`) so `INTASEND_SECRET_KEY` never leaves the server, plus a challenge-verified webhook and live status polling.
+
+3. **Changes Made**
+   - `server/src/config.ts`: Added optional `INTASEND_SECRET_KEY`, `INTASEND_PUBLISHABLE_KEY`, and `INTASEND_WEBHOOK_CHALLENGE`.
+   - `server/src/db/migrations/0002_intasend_stk.sql` & `server/src/db/schema.ts`: Added `mpesa_stk_requests` table and updated `payments_source_check` to allow `INTASEND_STK` and `DARAJA_STK`. Applied directly to Neon (`rapid-morning-51124707`).
+   - `server/src/routes/mpesa.ts` & `server/src/app.ts`: Added `POST /mpesa/stk-push`, `GET /mpesa/stk-status/:id`, and `POST /mpesa/intasend-webhook` (challenge-verified & idempotent).
+   - `frontend/src/components/SalesLogger.tsx`: Added **SEND M-PESA STK PROMPT** button, live waiting/confirmation banner, and 3-second polling that auto-fills `mpesaCode` upon completion.
+
+4. **Files Modified**
+   - `server/src/config.ts`
+   - `server/src/db/migrations/0002_intasend_stk.sql` (new)
+   - `server/src/db/schema.ts`
+   - `server/src/routes/mpesa.ts` (new)
+   - `server/src/app.ts`
+   - `frontend/src/components/SalesLogger.tsx`
+   - `prompts/implementation-reports.md`
+
+5. **Verification**
+   - `npx tsc --noEmit` passed (`exit code 0`) in both `frontend/` and `server/`.
+   - Applied `0002_intasend_stk.sql` statements to Neon (`rapid-morning-51124707`) via `run_sql_transaction`.
+
+6. **Deployment / Build**
+   - Committed and pushed to `origin/main` (triggers Render redeploy).
+   - Ready for IntaSend Sandbox (`ISSecretKey_test_...`) or Live (`ISSecretKey_live_...`) keys on Render.
+
+7. **Next / Open Items**
+   - Add `INTASEND_SECRET_KEY` and `INTASEND_WEBHOOK_CHALLENGE` to Render environment variables, and set the IntaSend webhook URL to `https://the-gem.onrender.com/mpesa/intasend-webhook`.
