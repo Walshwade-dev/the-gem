@@ -41,6 +41,7 @@ export interface AppState {
   lockdownReason?: string;
 
   // Active & Historical Batches
+  selectedBatchId: string | null;
   currentBatch: TruckBatch | null;
   historicalBatches: TruckBatch[];
 
@@ -345,6 +346,7 @@ export const useAppStore = create<AppState>()(
       isSyncing: false,
 
       isLockedDown: false,
+      selectedBatchId: null,
       currentBatch: null,
       historicalBatches: [],
       allocations: [],
@@ -408,7 +410,7 @@ export const useAppStore = create<AppState>()(
             try {
               const payload = await apiFetch<BackendSyncPayload>('/sync');
               const mapped = mapSyncPayloadToStore(payload);
-              const prevSelectedId = get().currentBatch?.id;
+              const prevSelectedId = get().currentBatch?.id ?? get().selectedBatchId;
               const allMapped = [mapped.currentBatch, ...mapped.historicalBatches].filter(
                 (b): b is TruckBatch => Boolean(b)
               );
@@ -421,6 +423,7 @@ export const useAppStore = create<AppState>()(
                 : mapped.historicalBatches;
               set({
                 ...mapped,
+                selectedBatchId: nextCurrentBatch?.id ?? null,
                 currentBatch: nextCurrentBatch,
                 historicalBatches: nextHistoricalBatches,
                 isAuthenticated: true,
@@ -591,6 +594,7 @@ export const useAppStore = create<AppState>()(
           isAuthenticated: false,
           currentUserId: '',
           currentUserName: '',
+          selectedBatchId: null,
           currentBatch: null,
           historicalBatches: [],
           allocations: [],
@@ -668,7 +672,7 @@ export const useAppStore = create<AppState>()(
         const target = all.find((b) => b.id === batchId);
         if (!target) return;
         const others = all.filter((b) => b.id !== batchId);
-        set({ currentBatch: target, historicalBatches: others });
+        set({ selectedBatchId: batchId, currentBatch: target, historicalBatches: others });
       },
 
       createBatch: async (params) => {
@@ -1201,6 +1205,7 @@ export const useAppStore = create<AppState>()(
       partialize: (state) => ({
         isDarkMode: state.isDarkMode,
         isPrivacyMode: state.isPrivacyMode,
+        selectedBatchId: state.selectedBatchId,
       }),
     }
   )

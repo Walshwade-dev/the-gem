@@ -3345,3 +3345,34 @@ Connected the Staff Audit Log tab in `NotificationsModal` (`activityLogs`) to li
 
 7. **Next / Open Items**
    - None.
+
+---
+
+## Report 2026-11-15 — Persist Selected Batch & Restore Assigned Salesperson Batch After Update
+
+1. **User Request Summary**
+   - After updating the APK, the app did not restore the stock assigned to a salesperson for tracking.
+
+2. **Root Cause / Analysis**
+   - In `frontend/src/store/useAppStore.ts`, `partialize` only persisted `isDarkMode` and `isPrivacyMode` to `AsyncStorage`. After an app update/restart, `currentBatch?.id` was lost (`undefined`), causing `syncFromServer()` to reset `currentBatch` to the newest `ACTIVE` batch (`mappedBatches.find((b) => b.status === 'ACTIVE')`) instead of the batch the user was tracking.
+   - In `frontend/src/services/syncMapper.ts`, `currentBatch` was also picked as the first `ACTIVE` batch even for `SELLER` users, which could mismatch the salesperson's `ACTIVE` assignment when multiple active batches exist.
+
+3. **Changes Made**
+   - `frontend/src/store/useAppStore.ts`: Added `selectedBatchId: string | null` to store state and `partialize`, updated `selectActiveBatch`, `syncFromServer`, and `logout` so the active selected batch ID persists across app updates and restarts.
+   - `frontend/src/services/syncMapper.ts`: Updated `mapSyncPayloadToStore` so `SELLER` users resolve `currentBatch` to the batch matching their `ACTIVE` assignment (`payload.assignments.find((a) => a.status === 'ACTIVE')?.batchId`) before falling back to the first `ACTIVE` batch.
+
+4. **Files Modified**
+   - `frontend/src/store/useAppStore.ts`
+   - `frontend/src/services/syncMapper.ts`
+   - `prompts/implementation-reports.md`
+
+5. **Verification**
+   - Ran `npx tsc --noEmit` in `frontend/` (`exit code 0`).
+   - Verified `stock_assignments` in Neon (`the-gem`): both `NAROK-15NOV26-DUKEF1` (`Dess`) and `KENUA-15NOV26-KOJIR` (`Juma (Sales Assistant)`) remain `ACTIVE` in the database.
+
+6. **Deployment / Build**
+   - Committed and pushed to `origin/main`.
+   - Rebuilt `app-release.apk` via `./gradlew assembleRelease` and installed on `CI32ETYQ240929071929` via `adb install -r`.
+
+7. **Next / Open Items**
+   - None.

@@ -295,7 +295,16 @@ export function mapSyncPayloadToStore(payload: BackendSyncPayload) {
     };
   });
 
-  const currentBatch = mappedBatches.find((b) => b.status === 'ACTIVE') ?? null;
+  const activeSellerBatchId =
+    payload.role === 'SELLER'
+      ? payload.assignments.find((a) => a.status === 'ACTIVE')?.batchId
+      : undefined;
+  const currentBatch =
+    (activeSellerBatchId
+      ? mappedBatches.find((b) => b.id === activeSellerBatchId)
+      : undefined) ??
+    mappedBatches.find((b) => b.status === 'ACTIVE') ??
+    null;
   const historicalBatches = mappedBatches.filter((b) => b.id !== currentBatch?.id);
   const pkgGrams = (currentBatch?.packagingKg ?? 20) * 1000;
 
