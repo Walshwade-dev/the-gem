@@ -68,18 +68,18 @@ export const DailyClosureReceipt: React.FC<DailyClosureReceiptProps> = ({
 
   // Stock calculations
   const openingG1 = isViewingLive
-    ? (currentBatch?.initialGrade1Nets ?? 500)
-    : (activeRec?.openingStockGrade1 ?? 500);
+    ? (currentBatch?.initialGrade1Nets ?? 0)
+    : (activeRec?.openingStockGrade1 ?? 0);
   const openingG2 = isViewingLive
-    ? (currentBatch?.initialGrade2Nets ?? 20)
-    : (activeRec?.openingStockGrade2 ?? 20);
+    ? (currentBatch?.initialGrade2Nets ?? 0)
+    : (activeRec?.openingStockGrade2 ?? 0);
 
   const closingG1 = isViewingLive
-    ? (currentBatch?.remainingGrade1Nets ?? 350)
-    : (activeRec?.physicalCountGrade1 ?? 350);
+    ? (currentBatch?.remainingGrade1Nets ?? 0)
+    : (activeRec?.physicalCountGrade1 ?? 0);
   const closingG2 = isViewingLive
-    ? (currentBatch?.remainingGrade2Nets ?? 11)
-    : (activeRec?.physicalCountGrade2 ?? 11);
+    ? (currentBatch?.remainingGrade2Nets ?? 0)
+    : (activeRec?.physicalCountGrade2 ?? 0);
 
   const soldG1Live = useMemo(() => {
     return sales
@@ -102,8 +102,8 @@ export const DailyClosureReceipt: React.FC<DailyClosureReceiptProps> = ({
     : (activeRec?.soldGrade2Nets ?? Math.max(0, openingG2 - closingG2));
 
   // Target Selling Prices
-  const setPriceG1 = currentBatch?.pricePerBagGrade1 ?? activeRec?.expectedPriceGrade1 ?? 1300;
-  const setPriceG2 = currentBatch?.pricePerBagGrade2 ?? activeRec?.expectedPriceGrade2 ?? 800;
+  const setPriceG1 = currentBatch?.pricePerBagGrade1 ?? activeRec?.expectedPriceGrade1 ?? 0;
+  const setPriceG2 = currentBatch?.pricePerBagGrade2 ?? activeRec?.expectedPriceGrade2 ?? 0;
 
   const salesG1Live = useMemo(() => {
     const list = sales.filter((s) => s.grade === 'GRADE_1');
@@ -181,12 +181,6 @@ export const DailyClosureReceipt: React.FC<DailyClosureReceiptProps> = ({
       });
     });
 
-    if (list.length === 0) {
-      list.push(
-        { grade: 'Grade 1', buyerName: 'Eli', nets: 30, unitPrice: 1300, amount: 39000 },
-        { grade: 'Grade 2', buyerName: 'Masai', nets: 9, unitPrice: 800, amount: 7200 }
-      );
-    }
     return list;
   }, [isViewingLive, sales, customerCredits, activeRec, setPriceG1, setPriceG2]);
 
@@ -195,19 +189,19 @@ export const DailyClosureReceipt: React.FC<DailyClosureReceiptProps> = ({
 
   // Live Expenses & Deductions Tracking
   const nccNets = currentBatch?.nccDeclaredNets ?? openingG1;
-  const nccCess = currentBatch?.nccCessPaid ?? (nccNets * 16 > 0 ? nccNets * 16 : 8000);
+  const nccCess = currentBatch?.nccCessPaid ?? (nccNets * 16);
   const isNccPaid = currentBatch?.isNccCessPaid ?? false;
 
   const watchmanExpense = expenses.find((e) => e.category === 'WATCHMAN');
-  const watchmanFee = watchmanExpense?.amount ?? 100;
+  const watchmanFee = watchmanExpense?.amount ?? 0;
   const isWatchmanPaid = watchmanExpense?.isPaid ?? false;
 
   const sweeperExpense = expenses.find((e) => e.category === 'CLEANER' || (e.category as string) === 'SWEEPING_AND_SANITATION');
-  const sweepersFee = sweeperExpense?.amount ?? 100;
+  const sweepersFee = sweeperExpense?.amount ?? 0;
   const isSweepersPaid = sweeperExpense?.isPaid ?? false;
 
-  const labor1 = casualLaborers.find((l) => l.workerName.includes('1') || l.workerName.toLowerCase().includes('person 1'))?.agreedWage ?? 1000;
-  const labor2 = casualLaborers.find((l) => l.workerName.includes('Assistant') || l.workerName.toLowerCase().includes('assistant'))?.agreedWage ?? 800;
+  const labor1 = casualLaborers.find((l) => l.workerName.includes('1') || l.workerName.toLowerCase().includes('person 1'))?.agreedWage ?? 0;
+  const labor2 = casualLaborers.find((l) => l.workerName.includes('Assistant') || l.workerName.toLowerCase().includes('assistant'))?.agreedWage ?? 0;
   const isLaborPaid = true; // casual laborers on-site daily wage
 
   // Total deductions: Calculated based on approved/collected deductions
@@ -231,11 +225,11 @@ export const DailyClosureReceipt: React.FC<DailyClosureReceiptProps> = ({
 
   const cashDeposited = isViewingLive
     ? Math.max(0, liveCashSales - totalExpensesSum)
-    : (activeRec?.actualCashInHand ?? 78000);
+    : (activeRec?.actualCashInHand ?? 0);
 
   const mpesaDirect = isViewingLive
     ? liveMpesaSales
-    : (activeRec?.mpesaSalesToday ?? 62200);
+    : (activeRec?.mpesaSalesToday ?? 0);
 
   const totalRemitted = cashDeposited + mpesaDirect;
   const isBalanced = isViewingLive ? true : totalRemitted === balanceAfterExpenses;

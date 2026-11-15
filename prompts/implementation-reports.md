@@ -3147,3 +3147,51 @@ Fixed the `connection is insecure (try using sslmode=require)` error during Rend
 - [server/src/db/pool.ts](file:///home/wadeace/Projects/onion%20sales/server/src/db/pool.ts#L5-L18)
 - [server/src/db/migrate.ts](file:///home/wadeace/Projects/onion%20sales/server/src/db/migrate.ts#L8-L13)
 - [server/src/jobs/scheduler.ts](file:///home/wadeace/Projects/onion%20sales/server/src/jobs/scheduler.ts#L251-L254)
+
+
+---
+
+## Report — Payment Input Forms Dark Mode & Universal Styling Alignment
+
+### 1. Summary
+Updated the Cash, M-Pesa, and Credit payment input forms and the Credit Liability Verification sub-panel in `SalesLogger.tsx` to use the universal teal-slate dark theme (`#1B4F55` / `#143D42`, `rgba(122, 181, 188, 0.45)`, `#F0FDFA`, `#CFE9EC`, `#9AC7CC`, `#5EEAD4`), consistent `borderRadius: 10` / `12` container radii, and fixed the dark-mode active guarantor checkbox background.
+
+### 2. Files Changed / Added
+- [SalesLogger.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/src/components/SalesLogger.tsx#L765-L1099): Replaced legacy `#0F172A` / `#334155` / `#94A3B8` dark-mode inline styles across Cash, M-Pesa, Credit, SMS Agreement, and Guarantor Liability forms with `styles.auxInputDark` and universal dark-mode teal-slate tokens; updated placeholder colors to `#9AC7CC` in dark mode; fixed `guarantorCheckboxRow` active dark-mode background (`#064E3B`).
+- [SalesLogger.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/src/components/SalesLogger.tsx#L1391-L1670): Standardized `paymentTab`, `auxInput`, `creditAuthTabs`, `sendSmsBtn`, `smsStatusCard`, `simulateReplyBtn`, `verifiedConsentCard`, and `guarantorCheckboxRow` to `borderRadius: 10` (`creditAuthBox` to `12`, `creditAuthTab` to `8`) and added `auxInputDark` and updated `creditAuthBoxDark` / `creditAuthTabActiveDark`.
+
+### 3. Verification
+- `npx --prefix "/home/wadeace/Projects/onion sales/frontend" tsc --noEmit` exited `0`.
+
+### 4. Open Issues / Risks
+- The APK currently installed on the phone was built prior to this UI edit; rebuild/reinstall (`./gradlew assembleRelease` + `adb install -r`) if you want this update on the physical device APK right away.
+
+### 5. Next Steps
+- Push to GitHub and/or rebuild the release APK if desired.
+
+### 6. References
+- [SalesLogger.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/src/components/SalesLogger.tsx#L765-L1099)
+- [SalesLogger.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/src/components/SalesLogger.tsx#L1391-L1670)
+
+
+---
+
+## Report — Zero Out Daily Closure Receipt Demo Fallbacks
+
+### 1. Summary
+Removed all hardcoded demo fallback values in `DailyClosureReceipt.tsx` so that when no batch, sales, credits, or expenses exist, all Daily Closure Receipt values default to `0` (and empty credit list `[]`), strictly reflecting live batch stock, sales, credits, and expenses.
+
+### 2. Files Changed / Added
+- [DailyClosureReceipt.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/src/components/ui/DailyClosureReceipt.tsx#L69-L234): Replaced hardcoded fallbacks (`500`, `20`, `350`, `11`, `1300`, `800`, `Eli`/`Masai` credits, `8000`, `100`, `100`, `1000`, `800`, `78000`, `62200`) with `0` and `[]`.
+
+### 3. Verification
+- `npx tsc --noEmit` in `frontend/` exited `0`.
+
+### 4. Open Issues / Risks
+- None.
+
+### 5. Next Steps
+- Rebuild and reinstall the APK on the phone when ready so both the payment form dark-mode update and Daily Closure zero-defaults are included.
+
+### 6. References
+- [DailyClosureReceipt.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/src/components/ui/DailyClosureReceipt.tsx#L69-L234)

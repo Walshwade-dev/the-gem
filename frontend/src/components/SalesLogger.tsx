@@ -766,11 +766,11 @@ export const SalesLogger: React.FC = () => {
         {paymentMethod === 'CASH' && (
           <View style={styles.auxFields}>
             <TextInput
-              style={[styles.auxInput, isDarkMode && { backgroundColor: '#0F172A', borderColor: '#334155', color: '#F8FAFC' }]}
+              style={[styles.auxInput, isDarkMode && styles.auxInputDark]}
               placeholder="Customer Name (leave blank for auto Customer ID)"
               value={buyerName}
               onChangeText={setBuyerName}
-              placeholderTextColor={THEME.colors.textMuted}
+              placeholderTextColor={isDarkMode ? '#9AC7CC' : THEME.colors.textMuted}
             />
           </View>
         )}
@@ -779,7 +779,7 @@ export const SalesLogger: React.FC = () => {
         {paymentMethod === 'MPESA' && (
           <View style={styles.auxFields}>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-              <Text style={[styles.creditSubLabel, { marginBottom: 0 }, isDarkMode && { color: '#CBD5E1' }]}>
+              <Text style={[styles.creditSubLabel, { marginBottom: 0 }, isDarkMode && { color: '#CFE9EC' }]}>
                 M-PESA (SEND MONEY / POCHI LA BIASHARA)
               </Text>
               <TouchableOpacity
@@ -789,13 +789,13 @@ export const SalesLogger: React.FC = () => {
                 <Ionicons
                   name={smsPermissionGranted ? 'radio-button-on' : 'chatbox-ellipses-outline'}
                   size={14}
-                  color={smsPermissionGranted ? '#10B981' : (isDarkMode ? '#38BDF8' : '#0891B2')}
+                  color={smsPermissionGranted ? '#10B981' : (isDarkMode ? '#5EEAD4' : '#0891B2')}
                 />
                 <Text
                   style={{
                     fontSize: 11,
                     fontWeight: '800',
-                    color: smsPermissionGranted ? '#10B981' : (isDarkMode ? '#38BDF8' : '#0891B2'),
+                    color: smsPermissionGranted ? '#10B981' : (isDarkMode ? '#5EEAD4' : '#0891B2'),
                   }}
                 >
                   {smsPermissionGranted ? 'Listening for SMS' : 'Auto-Detect SMS'}
@@ -808,12 +808,12 @@ export const SalesLogger: React.FC = () => {
                   flexDirection: 'row',
                   alignItems: 'center',
                   gap: 6,
-                  backgroundColor: isDarkMode ? '#064E3B' : '#ECFDF5',
+                  backgroundColor: isDarkMode ? '#1B4F55' : '#ECFDF5',
                   borderColor: '#10B981',
                   borderWidth: 1,
-                  borderRadius: 6,
-                  paddingHorizontal: 8,
-                  paddingVertical: 5,
+                  borderRadius: 10,
+                  paddingHorizontal: 10,
+                  paddingVertical: 6,
                   marginBottom: 6,
                 }}
               >
@@ -824,29 +824,29 @@ export const SalesLogger: React.FC = () => {
               </View>
             )}
             <TextInput
-              style={[styles.auxInput, { marginBottom: 6 }, isDarkMode && { backgroundColor: '#0F172A', borderColor: '#334155', color: '#F8FAFC' }]}
+              style={[styles.auxInput, { marginBottom: 6 }, isDarkMode && styles.auxInputDark]}
               placeholder="Paste or type M-Pesa Code (e.g. TJ12AB34CD)"
               value={mpesaCode}
               onChangeText={(t) => setMpesaCode(t.toUpperCase())}
               autoCapitalize="characters"
               maxLength={10}
-              placeholderTextColor={THEME.colors.textMuted}
+              placeholderTextColor={isDarkMode ? '#9AC7CC' : THEME.colors.textMuted}
             />
             <View style={{ flexDirection: 'row', gap: 6 }}>
               <TextInput
-                style={[styles.auxInput, { flex: 1 }, isDarkMode && { backgroundColor: '#0F172A', borderColor: '#334155', color: '#F8FAFC' }]}
+                style={[styles.auxInput, { flex: 1 }, isDarkMode && styles.auxInputDark]}
                 placeholder="Customer Name"
                 value={buyerName}
                 onChangeText={setBuyerName}
-                placeholderTextColor={THEME.colors.textMuted}
+                placeholderTextColor={isDarkMode ? '#9AC7CC' : THEME.colors.textMuted}
               />
               <TextInput
-                style={[styles.auxInput, { flex: 1 }, isDarkMode && { backgroundColor: '#0F172A', borderColor: '#334155', color: '#F8FAFC' }]}
+                style={[styles.auxInput, { flex: 1 }, isDarkMode && styles.auxInputDark]}
                 placeholder="Phone (Optional)"
                 value={buyerPhone}
                 onChangeText={setBuyerPhone}
                 keyboardType="phone-pad"
-                placeholderTextColor={THEME.colors.textMuted}
+                placeholderTextColor={isDarkMode ? '#9AC7CC' : THEME.colors.textMuted}
               />
             </View>
           </View>
@@ -854,32 +854,32 @@ export const SalesLogger: React.FC = () => {
 
         {paymentMethod === 'CREDIT' && (
           <View style={styles.auxFields}>
-            <Text style={[styles.creditSubLabel, isDarkMode && { color: '#CBD5E1' }]}>
+            <Text style={[styles.creditSubLabel, isDarkMode && { color: '#CFE9EC' }]}>
               DEBTOR CONTACT INFORMATION
             </Text>
             <TextInput
-              style={[styles.auxInput, isDarkMode && { backgroundColor: '#0F172A', borderColor: '#334155', color: '#F8FAFC' }]}
+              style={[styles.auxInput, isDarkMode && styles.auxInputDark]}
               placeholder="Customer Name (e.g. Mama Njoroge / Kariokor Hotel)"
               value={buyerName}
               onChangeText={setBuyerName}
-              placeholderTextColor={THEME.colors.textMuted}
+              placeholderTextColor={isDarkMode ? '#9AC7CC' : THEME.colors.textMuted}
             />
             <TextInput
-              style={[styles.auxInput, { marginTop: 6 }, isDarkMode && { backgroundColor: '#0F172A', borderColor: '#334155', color: '#F8FAFC' }]}
+              style={[styles.auxInput, { marginTop: 6 }, isDarkMode && styles.auxInputDark]}
               placeholder="Customer Phone (e.g. 0712345678)"
               value={buyerPhone}
               onChangeText={setBuyerPhone}
               keyboardType="phone-pad"
-              placeholderTextColor={THEME.colors.textMuted}
+              placeholderTextColor={isDarkMode ? '#9AC7CC' : THEME.colors.textMuted}
             />
             <TextInput
-              style={[styles.auxInput, { marginTop: 6 }, isDarkMode && { backgroundColor: '#0F172A', borderColor: '#334155', color: '#F8FAFC' }]}
+              style={[styles.auxInput, { marginTop: 6 }, isDarkMode && styles.auxInputDark]}
               placeholder="Debtor Kenyan National ID (e.g. 28394812)"
               value={buyerNationalId}
               onChangeText={setBuyerNationalId}
               keyboardType="numeric"
               maxLength={8}
-              placeholderTextColor={THEME.colors.textMuted}
+              placeholderTextColor={isDarkMode ? '#9AC7CC' : THEME.colors.textMuted}
             />
 
             {/* Credit Liability Verification Box */}
@@ -890,7 +890,7 @@ export const SalesLogger: React.FC = () => {
                   size={18} 
                   color={isCreditAuthorized ? "#10B981" : "#F59E0B"} 
                 />
-                <Text style={[styles.creditAuthTitle, isDarkMode && { color: '#F8FAFC' }]}>
+                <Text style={[styles.creditAuthTitle, isDarkMode && { color: '#F0FDFA' }]}>
                   LIABILITY VERIFICATION
                 </Text>
                 <View style={[
@@ -906,12 +906,12 @@ export const SalesLogger: React.FC = () => {
                 </View>
               </View>
 
-              <Text style={[styles.creditAuthExplanation, isDarkMode && { color: '#94A3B8' }]}>
+              <Text style={[styles.creditAuthExplanation, isDarkMode && { color: '#CFE9EC' }]}>
                 To record this credit sale under Kenya DPA, either the debtor must acknowledge liability via SMS agreement, or an authorized guarantor must sign off.
               </Text>
 
               {/* Mode Switcher */}
-              <View style={[styles.creditAuthTabs, isDarkMode && { backgroundColor: '#0F172A' }]}>
+              <View style={[styles.creditAuthTabs, isDarkMode && { backgroundColor: '#1B4F55' }]}>
                 <TouchableOpacity
                   style={[
                     styles.creditAuthTab,
@@ -923,12 +923,12 @@ export const SalesLogger: React.FC = () => {
                   <Ionicons 
                     name="chatbubble-ellipses" 
                     size={14} 
-                    color={creditAuthMode === 'SMS' ? '#0891B2' : (isDarkMode ? '#94A3B8' : '#64748B')} 
+                    color={creditAuthMode === 'SMS' ? (isDarkMode ? '#5EEAD4' : '#0891B2') : (isDarkMode ? '#CFE9EC' : '#64748B')} 
                   />
                   <Text style={[
                     styles.creditAuthTabText,
                     creditAuthMode === 'SMS' && styles.creditAuthTabTextActive,
-                    isDarkMode && { color: creditAuthMode === 'SMS' ? '#22D3EE' : '#94A3B8' }
+                    isDarkMode && { color: creditAuthMode === 'SMS' ? '#5EEAD4' : '#CFE9EC' }
                   ]}>
                     1. SMS Agreement
                   </Text>
@@ -945,12 +945,12 @@ export const SalesLogger: React.FC = () => {
                   <Ionicons 
                     name="shield" 
                     size={14} 
-                    color={creditAuthMode === 'GUARANTOR' ? '#0891B2' : (isDarkMode ? '#94A3B8' : '#64748B')} 
+                    color={creditAuthMode === 'GUARANTOR' ? (isDarkMode ? '#5EEAD4' : '#0891B2') : (isDarkMode ? '#CFE9EC' : '#64748B')} 
                   />
                   <Text style={[
                     styles.creditAuthTabText,
                     creditAuthMode === 'GUARANTOR' && styles.creditAuthTabTextActive,
-                    isDarkMode && { color: creditAuthMode === 'GUARANTOR' ? '#22D3EE' : '#94A3B8' }
+                    isDarkMode && { color: creditAuthMode === 'GUARANTOR' ? '#5EEAD4' : '#CFE9EC' }
                   ]}>
                     2. Guarantor Liability
                   </Text>
@@ -973,31 +973,31 @@ export const SalesLogger: React.FC = () => {
                     </TouchableOpacity>
                   ) : (
                     <View style={styles.smsWorkflowContainer}>
-                      <View style={[styles.smsStatusCard, isDarkMode && { backgroundColor: '#0F172A', borderColor: '#334155' }]}>
+                      <View style={[styles.smsStatusCard, isDarkMode && { backgroundColor: '#1B4F55', borderColor: 'rgba(122, 181, 188, 0.45)' }]}>
                         <View style={styles.smsSentRow}>
-                          <Ionicons name="checkmark-circle" size={16} color="#059669" />
-                          <Text style={[styles.smsSentText, isDarkMode && { color: '#E2E8F0' }]}>
+                          <Ionicons name="checkmark-circle" size={16} color="#10B981" />
+                          <Text style={[styles.smsSentText, isDarkMode && { color: '#F0FDFA' }]}>
                             Agreement SMS sent to {buyerPhone}
                           </Text>
                         </View>
-                        <Text style={[styles.smsAwaitingText, isDarkMode && { color: '#94A3B8' }]}>
+                        <Text style={[styles.smsAwaitingText, isDarkMode && { color: '#CFE9EC' }]}>
                           Debtor was asked to reply "YES" to confirm debt of Ksh {totalAmount.toLocaleString()} from Truck {currentBatch.truckPlate}.
                         </Text>
                       </View>
 
                       {!buyerAgreed ? (
                         <TouchableOpacity
-                          style={styles.simulateReplyBtn}
+                          style={[styles.simulateReplyBtn, isDarkMode && { backgroundColor: '#1B4F55', borderColor: 'rgba(122, 181, 188, 0.45)' }]}
                           onPress={handleSimulateBuyerConsent}
                           activeOpacity={0.8}
                         >
-                          <MaterialCommunityIcons name="cellphone-message" size={16} color="#0891B2" />
-                          <Text style={styles.simulateReplyBtnText}>
+                          <MaterialCommunityIcons name="cellphone-message" size={16} color={isDarkMode ? '#5EEAD4' : '#0891B2'} />
+                          <Text style={[styles.simulateReplyBtnText, isDarkMode && { color: '#5EEAD4' }]}>
                             Simulate Debtor Reply "YES" (Accept Liability)
                           </Text>
                         </TouchableOpacity>
                       ) : (
-                        <View style={[styles.verifiedConsentCard, isDarkMode && { backgroundColor: '#064E3B', borderColor: '#059669' }]}>
+                        <View style={[styles.verifiedConsentCard, isDarkMode && { backgroundColor: '#064E3B', borderColor: '#10B981' }]}>
                           <Ionicons name="shield-checkmark" size={18} color="#10B981" />
                           <View style={{ flex: 1 }}>
                             <Text style={[styles.verifiedConsentTitle, isDarkMode && { color: '#ECFDF5' }]}>
@@ -1018,49 +1018,49 @@ export const SalesLogger: React.FC = () => {
               {creditAuthMode === 'GUARANTOR' && (
                 <View style={styles.authModePanel}>
                   <View style={styles.guarantorHeaderRow}>
-                    <Text style={[styles.guarantorInstruction, isDarkMode && { color: '#94A3B8' }]}>
+                    <Text style={[styles.guarantorInstruction, isDarkMode && { color: '#CFE9EC' }]}>
                       Seller or Master pledges personal liability for this debt:
                     </Text>
                     <TouchableOpacity
-                      style={styles.autofillBtn}
+                      style={[styles.autofillBtn, isDarkMode && { backgroundColor: '#1B4F55', borderWidth: 1, borderColor: 'rgba(122, 181, 188, 0.45)' }]}
                       onPress={handleAutofillSelfGuarantor}
                     >
-                      <Ionicons name="person" size={11} color="#0891B2" />
-                      <Text style={styles.autofillBtnText}>Use My Details</Text>
+                      <Ionicons name="person" size={11} color={isDarkMode ? '#5EEAD4' : '#0891B2'} />
+                      <Text style={[styles.autofillBtnText, isDarkMode && { color: '#5EEAD4' }]}>Use My Details</Text>
                     </TouchableOpacity>
                   </View>
 
                   <TextInput
-                    style={[styles.auxInput, isDarkMode && { backgroundColor: '#0F172A', borderColor: '#334155', color: '#F8FAFC' }]}
+                    style={[styles.auxInput, isDarkMode && styles.auxInputDark]}
                     placeholder="Guarantor Full Name"
                     value={guarantorName}
                     onChangeText={setGuarantorName}
-                    placeholderTextColor={THEME.colors.textMuted}
+                    placeholderTextColor={isDarkMode ? '#9AC7CC' : THEME.colors.textMuted}
                   />
                   <TextInput
-                    style={[styles.auxInput, { marginTop: 6 }, isDarkMode && { backgroundColor: '#0F172A', borderColor: '#334155', color: '#F8FAFC' }]}
+                    style={[styles.auxInput, { marginTop: 6 }, isDarkMode && styles.auxInputDark]}
                     placeholder="Guarantor Phone Number"
                     value={guarantorPhone}
                     onChangeText={setGuarantorPhone}
                     keyboardType="phone-pad"
-                    placeholderTextColor={THEME.colors.textMuted}
+                    placeholderTextColor={isDarkMode ? '#9AC7CC' : THEME.colors.textMuted}
                   />
                   <TextInput
-                    style={[styles.auxInput, { marginTop: 6 }, isDarkMode && { backgroundColor: '#0F172A', borderColor: '#334155', color: '#F8FAFC' }]}
+                    style={[styles.auxInput, { marginTop: 6 }, isDarkMode && styles.auxInputDark]}
                     placeholder="Guarantor Kenyan National ID (e.g. 24918230)"
                     value={guarantorNationalId}
                     onChangeText={setGuarantorNationalId}
                     keyboardType="numeric"
                     maxLength={8}
-                    placeholderTextColor={THEME.colors.textMuted}
+                    placeholderTextColor={isDarkMode ? '#9AC7CC' : THEME.colors.textMuted}
                   />
 
                   {/* Legal Guarantee Checkbox */}
                   <TouchableOpacity
                     style={[
                       styles.guarantorCheckboxRow, 
-                      isDarkMode && { backgroundColor: '#0F172A', borderColor: '#334155' },
-                      guarantorConsentChecked && styles.guarantorCheckboxRowActive
+                      isDarkMode && { backgroundColor: '#1B4F55', borderColor: 'rgba(122, 181, 188, 0.45)' },
+                      guarantorConsentChecked && (isDarkMode ? { backgroundColor: '#064E3B', borderColor: '#10B981' } : styles.guarantorCheckboxRowActive)
                     ]}
                     onPress={() => setGuarantorConsentChecked(prev => !prev)}
                     activeOpacity={0.7}
@@ -1068,11 +1068,11 @@ export const SalesLogger: React.FC = () => {
                     <Ionicons 
                       name={guarantorConsentChecked ? "checkbox" : "square-outline"} 
                       size={20} 
-                      color={guarantorConsentChecked ? "#059669" : (isDarkMode ? "#94A3B8" : "#64748B")} 
+                      color={guarantorConsentChecked ? "#10B981" : (isDarkMode ? "#9AC7CC" : "#64748B")} 
                     />
                     <Text style={[
                       styles.guarantorCheckboxLabel,
-                      isDarkMode && { color: '#E2E8F0' },
+                      isDarkMode && { color: '#F0FDFA' },
                       guarantorConsentChecked && { fontWeight: '700' }
                     ]}>
                       I, <Text style={styles.boldText}>{guarantorName || 'Guarantor'}</Text> (ID: {guarantorNationalId || 'N/A'}, {role === 'MERCHANT' ? 'Master' : 'Seller'}), formally agree to be personally & financially liable for Ksh {totalAmount.toLocaleString()} if {buyerName || 'the debtor'} (ID: {buyerNationalId || 'N/A'}) defaults.
@@ -1080,7 +1080,7 @@ export const SalesLogger: React.FC = () => {
                   </TouchableOpacity>
 
                   {guarantorConsentChecked && guarantorName.trim().length > 0 && guarantorPhone.trim().length > 0 && (
-                    <View style={[styles.verifiedConsentCard, isDarkMode && { backgroundColor: '#064E3B', borderColor: '#059669' }]}>
+                    <View style={[styles.verifiedConsentCard, isDarkMode && { backgroundColor: '#064E3B', borderColor: '#10B981' }]}>
                       <Ionicons name="shield-checkmark" size={18} color="#10B981" />
                       <View style={{ flex: 1 }}>
                         <Text style={[styles.verifiedConsentTitle, isDarkMode && { color: '#ECFDF5' }]}>
@@ -1388,7 +1388,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 4,
     paddingVertical: 12,
-    borderRadius: 8,
+    borderRadius: 10,
     borderWidth: 1.5,
     borderColor: '#E2E8F0',
     backgroundColor: '#F8FAFC',
@@ -1414,14 +1414,19 @@ const styles = StyleSheet.create({
     marginBottom: THEME.spacing.md,
   },
   auxInput: {
-    backgroundColor: '#F8FAFC',
+    backgroundColor: '#F1F5F9',
     borderWidth: 1,
     borderColor: '#CBD5E1',
-    borderRadius: 8,
+    borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 13,
     color: THEME.colors.textPrimary,
+  },
+  auxInputDark: {
+    backgroundColor: '#1B4F55',
+    borderColor: 'rgba(122, 181, 188, 0.45)',
+    color: '#F0FDFA',
   },
   submitButton: {
     backgroundColor: THEME.colors.primary,
@@ -1459,13 +1464,13 @@ const styles = StyleSheet.create({
     marginTop: 10,
     padding: 12,
     backgroundColor: '#F8FAFC',
-    borderRadius: 10,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: '#E2E8F0',
   },
   creditAuthBoxDark: {
-    backgroundColor: '#0F172A',
-    borderColor: '#334155',
+    backgroundColor: '#143D42',
+    borderColor: 'rgba(122, 181, 188, 0.45)',
   },
   creditAuthHeaderRow: {
     flexDirection: 'row',
@@ -1511,7 +1516,7 @@ const styles = StyleSheet.create({
   creditAuthTabs: {
     flexDirection: 'row',
     backgroundColor: '#F1F5F9',
-    borderRadius: 8,
+    borderRadius: 10,
     padding: 3,
     gap: 4,
     marginBottom: 10,
@@ -1523,7 +1528,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 6,
     paddingVertical: 7,
-    borderRadius: 6,
+    borderRadius: 8,
   },
   creditAuthTabActive: {
     backgroundColor: '#FFFFFF',
@@ -1534,7 +1539,7 @@ const styles = StyleSheet.create({
     elevation: 1,
   },
   creditAuthTabActiveDark: {
-    backgroundColor: '#1E293B',
+    backgroundColor: '#256A71',
   },
   creditAuthTabText: {
     fontSize: 11,
@@ -1555,7 +1560,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 6,
     paddingVertical: 10,
-    borderRadius: 8,
+    borderRadius: 10,
     shadowColor: '#0891B2',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.15,
@@ -1574,7 +1579,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: '#E2E8F0',
-    borderRadius: 8,
+    borderRadius: 10,
     padding: 10,
   },
   smsSentRow: {
@@ -1602,7 +1607,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 6,
     paddingVertical: 8,
-    borderRadius: 8,
+    borderRadius: 10,
   },
   simulateReplyBtnText: {
     fontSize: 11,
@@ -1613,7 +1618,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#ECFDF5',
     borderWidth: 1,
     borderColor: '#A7F3D0',
-    borderRadius: 8,
+    borderRadius: 10,
     padding: 10,
     flexDirection: 'row',
     alignItems: 'center',
@@ -1662,7 +1667,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: '#E2E8F0',
-    borderRadius: 8,
+    borderRadius: 10,
     padding: 10,
     marginTop: 8,
   },
