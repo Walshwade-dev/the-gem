@@ -16,6 +16,8 @@ import {
   PermissionsAndroid,
   DeviceEventEmitter,
   NativeModules,
+  Animated,
+  Easing,
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { THEME } from '../constants/theme';
@@ -73,6 +75,17 @@ export const SalesLogger: React.FC = () => {
   const g2RemainingSeller = Math.max(0, g2Allocated - g2Sold);
 
   const [selectedGrade, setSelectedGrade] = useState<ProduceGrade>('GRADE_1');
+  const [gradeSwitchWidth, setGradeSwitchWidth] = useState<number>(0);
+  const gradeSwitchAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(gradeSwitchAnim, {
+      toValue: selectedGrade === 'GRADE_1' ? 0 : 1,
+      duration: 220,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [selectedGrade, gradeSwitchAnim]);
 
   const availableStock = isSeller
     ? (selectedGrade === 'GRADE_1' ? g1RemainingSeller : g2RemainingSeller)
@@ -518,102 +531,103 @@ export const SalesLogger: React.FC = () => {
       <View style={[styles.card, isDarkMode && styles.cardDark]}>
         <View style={[styles.header, isDarkMode && styles.headerDark]}>
           <View style={styles.headerTitleRow}>
-            <MaterialCommunityIcons name="cash-register" size={20} color={isDarkMode ? '#22D3EE' : THEME.colors.primary} />
-            <Text style={[styles.headerTitle, isDarkMode && { color: '#22D3EE' }]}>RECORD SALE (SAJILI MAUZO)</Text>
+            <Text style={[styles.headerTitle, isDarkMode && { color: '#7DD3FC' }]}>RECORD SALE</Text>
           </View>
           <Text style={styles.sellerRoleTag}>
             {role === 'MERCHANT' ? 'Master Direct' : 'Seller Mode'}
           </Text>
         </View>
 
-        {/* 1. Grade Selector */}
-        <Text style={[styles.fieldLabel, isDarkMode && styles.fieldLabelDark]}>1. SELECT PRODUCE GRADE</Text>
-        <View style={styles.gradeToggleGroup}>
-          <TouchableOpacity 
-            style={[
-              styles.gradeButton, 
-              isDarkMode && { backgroundColor: '#0F172A', borderColor: '#334155' },
-              selectedGrade === 'GRADE_1' && styles.gradeButtonActiveG1
-            ]}
+        {/* Grade Selector (Grouped Sliding Pill Switch) */}
+        <Text style={[styles.fieldLabel, isDarkMode && styles.fieldLabelDark]}>SELECT GRADE</Text>
+        <View
+          style={[styles.gradeSwitchTrack, isDarkMode && styles.gradeSwitchTrackDark]}
+          onLayout={(e) => setGradeSwitchWidth(e.nativeEvent.layout.width)}
+        >
+          {gradeSwitchWidth > 0 && (
+            <Animated.View
+              pointerEvents="none"
+              style={[
+                styles.gradeSwitchActivePill,
+                {
+                  width: (gradeSwitchWidth - 10) / 2,
+                  backgroundColor: selectedGrade === 'GRADE_1' ? '#0891B2' : '#D97706',
+                  transform: [
+                    {
+                      translateX: gradeSwitchAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0, (gradeSwitchWidth - 10) / 2 + 4],
+                      }),
+                    },
+                  ],
+                },
+              ]}
+            />
+          )}
+          <TouchableOpacity
+            style={styles.gradeSwitchBtn}
             onPress={() => handleGradeSelect('GRADE_1')}
             activeOpacity={0.8}
           >
-            <Text style={[
-              styles.gradeButtonTitle, 
-              isDarkMode && { color: '#F8FAFC' },
-              selectedGrade === 'GRADE_1' && styles.textWhite
-            ]}>
-              Grade 1
-            </Text>
-            <Text style={[
-              styles.gradeButtonSub, 
-              isDarkMode && { color: '#CBD5E1' },
-              selectedGrade === 'GRADE_1' && styles.textWhiteLight
-            ]}>
-              {isSeller 
-                ? `Assigned: ${g1RemainingSeller}/${g1Allocated} nets` 
-                : `Batch: Ksh ${getBatchPriceForGrade('GRADE_1').toLocaleString()}`}
+            <Text
+              style={[
+                styles.gradeButtonTitle,
+                isDarkMode && { color: '#CFE9EC' },
+                selectedGrade === 'GRADE_1' && styles.textWhite,
+              ]}
+              numberOfLines={1}
+            >
+              Grade 1 ({getBatchPriceForGrade('GRADE_1').toLocaleString()})
             </Text>
           </TouchableOpacity>
 
-          <TouchableOpacity 
-            style={[
-              styles.gradeButton, 
-              isDarkMode && { backgroundColor: '#0F172A', borderColor: '#334155' },
-              selectedGrade === 'GRADE_2' && styles.gradeButtonActiveG2
-            ]}
+          <TouchableOpacity
+            style={styles.gradeSwitchBtn}
             onPress={() => handleGradeSelect('GRADE_2')}
             activeOpacity={0.8}
           >
-            <Text style={[
-              styles.gradeButtonTitle, 
-              isDarkMode && { color: '#F8FAFC' },
-              selectedGrade === 'GRADE_2' && styles.textWhite
-            ]}>
-              Grade 2
-            </Text>
-            <Text style={[
-              styles.gradeButtonSub, 
-              isDarkMode && { color: '#CBD5E1' },
-              selectedGrade === 'GRADE_2' && styles.textWhiteLight
-            ]}>
-              {isSeller 
-                ? `Assigned: ${g2RemainingSeller}/${g2Allocated} nets` 
-                : `Batch: Ksh ${getBatchPriceForGrade('GRADE_2').toLocaleString()}`}
+            <Text
+              style={[
+                styles.gradeButtonTitle,
+                isDarkMode && { color: '#CFE9EC' },
+                selectedGrade === 'GRADE_2' && styles.textWhite,
+              ]}
+              numberOfLines={1}
+            >
+              Grade 2 ({getBatchPriceForGrade('GRADE_2').toLocaleString()})
             </Text>
           </TouchableOpacity>
         </View>
 
-        {/* 2. Quantity (Nets / Sacks) */}
+        {/* Quantity (Nets / Sacks) */}
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-          <Text style={[styles.fieldLabel, isDarkMode && styles.fieldLabelDark]}>2. NUMBER OF NETS / SACKS</Text>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-            <Ionicons name="cube-outline" size={13} color={isSeller ? '#0891B2' : '#059669'} />
-            <Text style={{ fontSize: 11, fontWeight: '700', color: isDarkMode ? '#38BDF8' : '#0891B2' }}>
-              {isSeller 
-                ? `Assigned: ${availableStock} / ${totalStockForGrade} nets` 
-                : `Batch Stock: ${availableStock} nets`}
-            </Text>
-          </View>
+          <Text style={[styles.fieldLabel, isDarkMode && styles.fieldLabelDark]}>CHOOSE NUMBER OF NETS</Text>
+          <Text style={{ fontSize: 11, fontWeight: '700', color: isDarkMode ? '#7DD3FC' : '#0891B2' }}>
+            {isSeller 
+              ? `Assigned: ${availableStock} / ${totalStockForGrade} nets` 
+              : `Stock Balance: ${availableStock} nets`}
+          </Text>
         </View>
         <View style={styles.quantityRow}>
           <TouchableOpacity 
-            style={[styles.qtyAdjustBtn, isDarkMode && { backgroundColor: '#334155', borderColor: '#475569' }]} 
+            style={styles.qtyAdjustBtn} 
             onPress={() => adjustQuantity(-1)}
+            activeOpacity={0.7}
           >
-            <Ionicons name="remove" size={22} color={isDarkMode ? '#F8FAFC' : THEME.colors.textPrimary} />
+            <Ionicons name="remove" size={22} color={isDarkMode ? '#7DD3FC' : '#0891B2'} />
           </TouchableOpacity>
 
-          <View style={[styles.qtyDisplayBox, isDarkMode && { backgroundColor: '#0F172A', borderColor: '#334155' }]}>
-            <Text style={[styles.qtyDisplayText, isDarkMode && { color: '#F8FAFC' }]}>{quantity}</Text>
-            <Text style={[styles.qtyDisplayUnit, isDarkMode && { color: '#38BDF8' }]}>NETS</Text>
+          <View style={[styles.qtyDisplayBox, isDarkMode && styles.qtyDisplayBoxDark]}>
+            <Text style={[styles.qtyDisplayText, isDarkMode && { color: '#F0FDFA' }]}>{quantity}</Text>
+            <Text style={[styles.qtyDisplayUnit, isDarkMode && { color: '#7DD3FC' }]}>NETS</Text>
           </View>
 
           <TouchableOpacity 
-            style={[styles.qtyAdjustBtn, isDarkMode && { backgroundColor: '#334155', borderColor: '#475569' }]} 
+            style={styles.qtyAdjustBtn} 
             onPress={() => adjustQuantity(1)}
+            activeOpacity={0.7}
           >
-            <Ionicons name="add" size={22} color={isDarkMode ? '#F8FAFC' : THEME.colors.textPrimary} />
+            <Ionicons name="add" size={22} color={isDarkMode ? '#7DD3FC' : '#0891B2'} />
           </TouchableOpacity>
 
           {/* Quick preset buttons */}
@@ -623,9 +637,9 @@ export const SalesLogger: React.FC = () => {
                 key={val} 
                 style={[
                   styles.presetPill, 
-                  isDarkMode && { backgroundColor: '#1E293B', borderWidth: 1, borderColor: '#334155' },
-                  availableStock > 0 && val > availableStock && { opacity: 0.5 }
+                  availableStock > 0 && val > availableStock && { opacity: 0.45 }
                 ]} 
+                activeOpacity={0.7}
                 onPress={() => {
                   if (availableStock > 0 && val > availableStock) {
                     setQuantity(availableStock);
@@ -634,62 +648,55 @@ export const SalesLogger: React.FC = () => {
                   }
                 }}
               >
-                <Text style={[styles.presetPillText, isDarkMode && { color: '#38BDF8' }]}>+{val}</Text>
+                <Text style={[styles.presetPillText, isDarkMode && { color: '#7DD3FC' }]}>+{val}</Text>
               </TouchableOpacity>
             ))}
           </View>
         </View>
 
-        {/* 3. Dynamic Negotiated Price */}
+        {/* Dynamic Negotiated Price */}
         <View style={styles.priceSection}>
           <View style={styles.priceHeaderRow}>
-            <Text style={[styles.fieldLabel, isDarkMode && styles.fieldLabelDark]}>3. NEGOTIATED PRICE PER NET (KSH)</Text>
-            <View style={styles.negotiationBadge}>
-              <Ionicons name="swap-horizontal" size={12} color="#059669" />
-              <Text style={styles.negotiationBadgeText}>Bargained Rate</Text>
-            </View>
+            <Text style={[styles.fieldLabel, isDarkMode && styles.fieldLabelDark]}>PRICE PER NET</Text>
           </View>
 
           <View style={styles.priceInputRow}>
-            <View style={[styles.currencyPrefix, isDarkMode && { backgroundColor: '#334155', borderColor: '#475569' }]}>
-              <Text style={[styles.currencyPrefixText, isDarkMode && { color: '#F8FAFC' }]}>KSH</Text>
+            <View style={[styles.priceDisplayBox, isDarkMode && styles.priceDisplayBoxDark]}>
+              <Text style={[styles.currencyPrefixText, isDarkMode && { color: '#7DD3FC' }]}>KSH</Text>
+              <TextInput
+                style={[styles.priceInput, isDarkMode && { color: '#F0FDFA' }]}
+                keyboardType="numeric"
+                value={unitPrice}
+                onChangeText={setUnitPrice}
+                placeholder="e.g. 1300"
+                placeholderTextColor={isDarkMode ? '#B4D6D9' : THEME.colors.textMuted}
+              />
             </View>
-            <TextInput
-              style={[styles.priceInput, isDarkMode && { backgroundColor: '#0F172A', borderColor: '#0891B2', color: '#F8FAFC' }]}
-              keyboardType="numeric"
-              value={unitPrice}
-              onChangeText={setUnitPrice}
-              placeholder="e.g. 1300"
-              placeholderTextColor={THEME.colors.textMuted}
-            />
             {/* Quick bargain adjust buttons */}
-            <TouchableOpacity style={[styles.bargainChip, isDarkMode && { backgroundColor: '#0F172A', borderColor: '#334155' }]} onPress={() => adjustPrice(-50)}>
-              <Text style={[styles.bargainChipText, isDarkMode && { color: '#F8FAFC' }]}>-50</Text>
+            <TouchableOpacity style={styles.bargainChip} onPress={() => adjustPrice(-50)} activeOpacity={0.7}>
+              <Text style={[styles.bargainChipText, isDarkMode && { color: '#7DD3FC' }]}>-50</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.bargainChip, isDarkMode && { backgroundColor: '#0F172A', borderColor: '#334155' }]} onPress={() => adjustPrice(+50)}>
-              <Text style={[styles.bargainChipText, isDarkMode && { color: '#F8FAFC' }]}>+50</Text>
+            <TouchableOpacity style={styles.bargainChip} onPress={() => adjustPrice(+50)} activeOpacity={0.7}>
+              <Text style={[styles.bargainChipText, isDarkMode && { color: '#7DD3FC' }]}>+50</Text>
             </TouchableOpacity>
           </View>
 
-          {/* Master Sourced Price & Minimum Purchase Floor Indicator */}
-          <View style={styles.masterPriceIndicatorRow}>
-            <Text style={[styles.masterPriceText, isDarkMode && { color: '#94A3B8' }]}>
-              Master Price: <Text style={{ fontWeight: '700', color: isDarkMode ? '#38BDF8' : '#0891B2' }}>Ksh {activeBatchPrice.toLocaleString()}</Text> • Min Floor: <Text style={{ fontWeight: '700', color: '#D97706' }}>Ksh {activeMinFloor.toLocaleString()}</Text>
-            </Text>
-            {numericPrice > 0 && numericPrice < activeMinFloor && (
+          {/* Minimum Purchase Floor Warning */}
+          {numericPrice > 0 && numericPrice < activeMinFloor && (
+            <View style={styles.masterPriceIndicatorRow}>
               <Text style={styles.floorWarningText}>⚠️ Cannot sell below Master's minimum price of Ksh {activeMinFloor.toLocaleString()}</Text>
-            )}
-          </View>
+            </View>
+          )}
         </View>
 
         {/* Live Calculation Banner */}
-        <View style={[styles.totalBanner, isDarkMode && { backgroundColor: '#2E1E05', borderColor: '#F59E0B' }]}>
-          <Text style={[styles.totalLabel, isDarkMode && { color: '#FDE68A' }]}>TOTAL SALE VALUE:</Text>
-          <Text style={[styles.totalValue, isDarkMode && { color: '#FBBF24' }]}>Ksh {totalAmount.toLocaleString()}</Text>
+        <View style={[styles.totalBanner, isDarkMode && styles.totalBannerDark]}>
+          <Text style={[styles.totalLabel, isDarkMode && { color: '#CFE9EC' }]}>TOTAL SALE VALUE</Text>
+          <Text style={[styles.totalValue, isDarkMode && { color: '#7DD3FC' }]}>Ksh {totalAmount.toLocaleString()}</Text>
         </View>
 
-        {/* 4. Payment Method Selector */}
-        <Text style={[styles.fieldLabel, isDarkMode && styles.fieldLabelDark]}>4. PAYMENT METHOD</Text>
+        {/* Payment Method Selector */}
+        <Text style={[styles.fieldLabel, isDarkMode && styles.fieldLabelDark]}>PAYMENT METHOD</Text>
         <View style={styles.paymentMethodRow}>
           {/* Cash */}
           <TouchableOpacity 
@@ -1124,21 +1131,21 @@ const styles = StyleSheet.create({
   },
   card: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#CCFBF1',
-    shadowColor: '#0891B2',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
+    borderRadius: 12,
+    padding: 14,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
     elevation: 3,
   },
   cardDark: {
     backgroundColor: '#256A71',
-    borderColor: '#7AB5BC',
-    borderWidth: 0.75,
     shadowColor: '#0D2C30',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    elevation: 5,
   },
   header: {
     flexDirection: 'row',
@@ -1183,28 +1190,33 @@ const styles = StyleSheet.create({
     marginBottom: 6,
     marginTop: 4,
   },
-  gradeToggleGroup: {
+  gradeSwitchTrack: {
     flexDirection: 'row',
-    gap: 8,
+    position: 'relative',
+    backgroundColor: '#F1F5F9',
+    borderRadius: 10,
+    padding: 3,
+    gap: 4,
     marginBottom: THEME.spacing.md,
   },
-  gradeButton: {
+  gradeSwitchTrackDark: {
+    backgroundColor: '#1B4F55',
+  },
+  gradeSwitchActivePill: {
+    position: 'absolute',
+    top: 3,
+    bottom: 3,
+    left: 3,
+    borderRadius: 8,
+  },
+  gradeSwitchBtn: {
     flex: 1,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: THEME.borderRadius.md,
-    borderWidth: 1.5,
-    borderColor: '#E2E8F0',
-    backgroundColor: '#F8FAFC',
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 8,
     alignItems: 'center',
-  },
-  gradeButtonActiveG1: {
-    backgroundColor: '#0891B2', // Turquoise Blue
-    borderColor: '#0891B2',
-  },
-  gradeButtonActiveG2: {
-    backgroundColor: '#D97706',
-    borderColor: '#D97706',
+    justifyContent: 'center',
+    zIndex: 1,
   },
   gradeButtonTitle: {
     fontSize: 13,
@@ -1229,26 +1241,24 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   qtyAdjustBtn: {
-    width: 44,
+    width: 38,
     height: 44,
-    borderRadius: 10,
-    backgroundColor: '#F1F5F9',
+    backgroundColor: 'transparent',
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#CBD5E1',
   },
   qtyDisplayBox: {
     flex: 1,
     height: 44,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: '#F1F5F9',
     borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#CBD5E1',
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
     gap: 6,
+  },
+  qtyDisplayBoxDark: {
+    backgroundColor: '#1B4F55',
   },
   qtyDisplayText: {
     fontSize: 20,
@@ -1257,23 +1267,23 @@ const styles = StyleSheet.create({
   },
   qtyDisplayUnit: {
     fontSize: 11,
-    fontWeight: '700',
-    color: THEME.colors.textSecondary,
+    fontWeight: '800',
+    color: '#0891B2',
   },
   presetsRow: {
     flexDirection: 'row',
     gap: 4,
   },
   presetPill: {
-    backgroundColor: '#E0E7FF',
-    paddingHorizontal: 10,
-    paddingVertical: 12,
+    backgroundColor: 'transparent',
+    paddingHorizontal: 8,
+    paddingVertical: 10,
     borderRadius: 8,
   },
   presetPillText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#3730A3',
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#0891B2',
   },
   priceSection: {
     marginBottom: THEME.spacing.md,
@@ -1303,69 +1313,68 @@ const styles = StyleSheet.create({
     gap: 6,
     marginTop: 4,
   },
-  currencyPrefix: {
-    height: 48,
-    paddingHorizontal: 12,
+  priceDisplayBox: {
+    flex: 1,
+    height: 44,
     backgroundColor: '#F1F5F9',
-    borderRadius: 8,
-    justifyContent: 'center',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#CBD5E1',
+    gap: 8,
+  },
+  priceDisplayBoxDark: {
+    backgroundColor: '#1B4F55',
   },
   currencyPrefixText: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '800',
-    color: THEME.colors.textSecondary,
+    color: '#0891B2',
   },
   priceInput: {
     flex: 1,
-    height: 48,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1.5,
-    borderColor: THEME.colors.primary,
-    borderRadius: 8,
-    paddingHorizontal: 12,
+    height: '100%',
+    backgroundColor: 'transparent',
     fontSize: 18,
-    fontWeight: '700',
+    fontWeight: '800',
     color: THEME.colors.textPrimary,
   },
   bargainChip: {
-    height: 48,
-    paddingHorizontal: 12,
-    backgroundColor: '#F8FAFC',
+    height: 44,
+    paddingHorizontal: 10,
+    backgroundColor: 'transparent',
     borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#CBD5E1',
     justifyContent: 'center',
     alignItems: 'center',
   },
   bargainChipText: {
     fontSize: 13,
-    fontWeight: '700',
-    color: THEME.colors.textPrimary,
+    fontWeight: '800',
+    color: '#0891B2',
   },
   totalBanner: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: '#FEF3C7',
+    backgroundColor: '#F1F5F9',
     paddingVertical: 10,
     paddingHorizontal: 14,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#FCD34D',
+    borderRadius: 10,
     marginBottom: THEME.spacing.md,
   },
+  totalBannerDark: {
+    backgroundColor: '#1B4F55',
+  },
   totalLabel: {
-    fontSize: 12,
+    fontSize: 11.5,
     fontWeight: '800',
-    color: '#92400E',
+    color: '#475569',
+    letterSpacing: 0.4,
   },
   totalValue: {
     fontSize: 18,
     fontWeight: '900',
-    color: '#78350F',
+    color: '#0891B2',
   },
   paymentMethodRow: {
     flexDirection: 'row',

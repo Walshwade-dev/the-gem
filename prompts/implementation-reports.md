@@ -2511,3 +2511,521 @@ Updated the Sales page batch selection cards (`salesBatchPickCard`) and `switchB
 ### 7. References
 - [App.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/App.tsx#L344-L435)
 - [App.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/App.tsx#L2285-L2345)
+
+---
+
+## 2026-11-15 — Build, GitHub Push & Release APK Installation on Connected Phone
+
+### 1. Summary
+Verified TypeScript builds for both the frontend and server, committed and pushed all current changes to GitHub (`origin/main` commit `1eff7d1`), built the standalone Android release APK (`app-release.apk`), and installed it onto the connected physical phone (`CI32ETYQ240929071929`, `Neon_Smarta_2_T`).
+
+### 2. Files Modified
+- [.gitignore](file:///home/wadeace/Projects/onion%20sales/.gitignore#L41-L44) — Added `/frontend/android` so generated native Android build artifacts are excluded from git commits.
+
+### 3. Behavior & Design Notes
+- `assembleRelease` bundled the JS/Hermes payload into [app-release.apk](file:///home/wadeace/Projects/onion%20sales/frontend/android/app/build/outputs/apk/release/app-release.apk) signed with the project's debug keystore (`signingConfigs.debug`), so the app runs standalone on the phone without needing Metro.
+- Specified `-s CI32ETYQ240929071929` on `adb install -r` to target the physical USB phone rather than `emulator-5554`.
+
+### 4. Verification
+- Frontend `tsc --noEmit` + Server `npm run build` (`tsc`) -> exited with code `0`.
+- `git commit` (`1eff7d1`, 60 files) and `git push origin main` (`cab9fb5..1eff7d1`) -> exited with code `0`.
+- `./gradlew assembleRelease` -> `BUILD SUCCESSFUL in 1m 6s` (exit code `0`).
+- `adb -s CI32ETYQ240929071929 install -r .../app-release.apk` -> `Performing Streamed Install` / `Success` (exit code `0`).
+
+### 5. Open Issues / Risks
+- None.
+
+### 6. Next Steps
+- Open **The Gem** (`com.thegem.onionsales`) on the connected phone (`Neon_Smarta_2_T`) to test the installed release build.
+
+### 7. References
+- [.gitignore](file:///home/wadeace/Projects/onion%20sales/.gitignore#L41-L44)
+- [build.gradle](file:///home/wadeace/Projects/onion%20sales/frontend/android/app/build.gradle#L90-L123)
+- [app-release.apk](file:///home/wadeace/Projects/onion%20sales/frontend/android/app/build/outputs/apk/release/app-release.apk)
+
+---
+
+## 2026-11-15 — Sales Page Stock ID Batch Card: Remove Hauling Truck Box & Show Truck Plate Below Batch ID
+
+### 1. Summary
+Updated [BatchOverviewCard.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/src/components/BatchOverviewCard.tsx#L93-L105) on the Sales page to remove the `HAULING TRUCK` badge container (`plateBadge`), display only the truck registration number (`currentBatch.truckPlate`) directly below the Batch ID (`currentBatch.batchNumber`), and remove the outer card border.
+
+### 2. Files Modified
+- [BatchOverviewCard.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/src/components/BatchOverviewCard.tsx) —
+  - Removed the `plateBadge` container (`HAULING TRUCK` label + `bus-outline` icon + bordered box) and unused `plateBadge`, `plateBadgeDark`, `plateSubLabel`, and `plateText` styles.
+  - Added `truckPlateBelow` directly below `batchNumber` inside `batchIdGroup`.
+  - Removed outer `borderWidth`/`borderColor` from `styles.card` and `styles.cardDark` and improved dark-mode contrast on `batchLabel` (`#7DD3FC`) and `batchInfoRowDark`.
+
+### 3. Behavior & Design Notes
+- Stock progress bars, grade counts, and seller allocation banners below the header remain unchanged.
+
+### 4. Verification
+- Ran `tsc -p "/home/wadeace/Projects/onion sales/frontend/tsconfig.json" --noEmit` -> exited with code `0` (no errors).
+
+### 5. Open Issues / Risks
+- None.
+
+### 6. Next Steps
+- None.
+
+### 7. References
+- [BatchOverviewCard.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/src/components/BatchOverviewCard.tsx#L93-L105)
+- [BatchOverviewCard.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/src/components/BatchOverviewCard.tsx#L210-L265)
+
+---
+
+## 2026-11-15 — Sales Page Containers: Remove Dark/Light Borders & Align Drop Shadows
+
+### 1. Summary
+Removed borders on the Sales page containers (`SalesLogger.tsx` `card`/`cardDark` and `BatchOverviewCard.tsx` `card`/`cardDark`/`emptyContainer`/`emptyContainerDark`) and applied consistent borderless drop-shadow elevation matching the rest of the app in both light and dark modes.
+
+### 2. Files Modified
+- [SalesLogger.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/src/components/SalesLogger.tsx#L1125-L1142) — Removed `borderWidth`/`borderColor` from `card` and `cardDark`, and applied `#000000` (`opacity: 0.06`, `elevation: 3`) in light mode and `#0D2C30` (`opacity: 0.3`, `radius: 10`, `elevation: 5`) in dark mode.
+- [BatchOverviewCard.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/src/components/BatchOverviewCard.tsx#L210-L360) — Removed `borderWidth`/`borderColor` from `emptyContainer` and `emptyContainerDark`, and updated `card`, `cardDark`, `emptyContainer`, and `emptyContainerDark` to use the same drop-shadow styling.
+
+### 3. Behavior & Design Notes
+- All Sales page cards now share the exact same borderless surface and drop-shadow depth as the Ledger and Products containers.
+
+### 4. Verification
+- Ran `tsc -p "/home/wadeace/Projects/onion sales/frontend/tsconfig.json" --noEmit` -> exited with code `0` (no errors).
+
+### 5. Open Issues / Risks
+- None.
+
+### 6. Next Steps
+- None.
+
+### 7. References
+- [SalesLogger.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/src/components/SalesLogger.tsx#L1125-L1142)
+- [BatchOverviewCard.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/src/components/BatchOverviewCard.tsx#L210-L360)
+
+---
+
+## 2026-11-15 — Live Sales Stream Containers: Borderless Cards, Stacked Name/Batch, Right-Aligned Rate & Top-Left Edge Payment Badge
+
+### 1. Summary
+Updated the Live Sales Stream transaction containers (`transCard`) and filter panel (`streamFilterPanel`) in [App.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/App.tsx#L740-L820) to remove outer borders in light and dark modes, stack the batch chip directly below the customer name, move the quantity & price-per-net line to the right column under the total amount, and position the `PAID • CASH` / `PAID • MPESA` / `CREDIT` badge (`methodBadgeEdge`) along the top-left edge of the parent card.
+
+### 2. Files Modified
+- [App.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/App.tsx) —
+  - Removed borders from `transCard`, `transCardDark`, `streamFilterPanel`, and `streamFilterPanelDark`, applying drop-shadow elevation matching the rest of the app.
+  - Added `methodBadgeEdge` (`position: 'absolute'`, `top: -7`, `left: 12`, `borderWidth: 2` matching the card background `#FFFFFF` / `#256A71`, `zIndex: 2`, `elevation: 4`) so ~3/4 of the badge sits inside the card and the top portion straddles the top-left edge.
+  - Stacked `transStockChip` directly beneath `transBuyer` in `transTextCol` and moved `{item.quantityNets} nets @ Ksh {item.negotiatedUnitPrice.toLocaleString()}/net` into `transRight` (`transDetailsRight`).
+
+### 3. Behavior & Design Notes
+- `transCard` uses `overflow: 'visible'`, `paddingTop: 18`, and `marginTop: 8` so the straddling top-left payment badge never clips or collides with the card content or preceding card.
+
+### 4. Verification
+- Ran `tsc -p "/home/wadeace/Projects/onion sales/frontend/tsconfig.json" --noEmit` -> exited with code `0` (no errors).
+
+### 5. Open Issues / Risks
+- None.
+
+### 6. Next Steps
+- None.
+
+### 7. References
+- [App.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/App.tsx#L740-L820)
+- [App.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/App.tsx#L1852-L1970)
+
+---
+
+## 2026-11-15 — Live Sales Stream: Clip Payment Badge Flush to Top Edge & Nudge Label Down
+
+### 1. Summary
+Updated `transCard` and `methodBadgeEdge` in [App.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/App.tsx#L742-L755) to clip the portion of the payment badge (`PAID • CASH` / `PAID • MPESA` / `CREDIT`) that extended above the card's top edge using `overflow: 'hidden'`, and increased the badge's top padding so the text sits slightly lower toward the main container body.
+
+### 2. Files Modified
+- [App.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/App.tsx) —
+  - Set `overflow: 'hidden'`, `paddingTop: 22`, and `marginTop: 4` on `styles.transCard`.
+  - Updated `styles.methodBadgeEdge` (`top: -6`, `left: 12`, `paddingTop: 9`, `paddingBottom: 3`, `borderBottomLeftRadius: 6`, `borderBottomRightRadius: 6`, removed outer `borderWidth`/`borderColor`) so the top is clipped flush with the card edge and the label sits lower toward the card body.
+
+### 3. Behavior & Design Notes
+- Because `transCard` clips at its `borderRadius: 12` boundary, the badge now reads as an inset top-left tab integrated into the card.
+
+### 4. Verification
+- Ran `tsc -p "/home/wadeace/Projects/onion sales/frontend/tsconfig.json" --noEmit` -> exited with code `0` (no errors).
+
+### 5. Open Issues / Risks
+- None.
+
+### 6. Next Steps
+- None.
+
+### 7. References
+- [App.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/App.tsx#L742-L755)
+- [App.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/App.tsx#L1851-L1895)
+
+---
+
+## 2026-11-15 — Live Sales Stream Card Layout Refinement & Payment Badge Labels
+
+### 1. Summary
+Refined the Live Sales Stream card (`transCard`) layout in [App.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/App.tsx#L727-L855) to:
+- Display only `CASH`, `MPESA`, or `CREDIT` in the top-left clipped payment badge (removing `PAID •`).
+- Place Customer Name/ID beside the badge on the top row with the total amount paid aligned on the far right on the same level.
+- Move the circular `G1`/`G2` pill up toward the badge at the top-left of the body row.
+- Align Batch ID (left) with Unit Price (`quantityNets nets @ Ksh .../net`, right), and Salesperson + Time (left) with Guarantor name (`Guarantor: ...`, right) for credit sales.
+
+### 2. Files Modified
+- [App.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/App.tsx) —
+  - Updated `methodBadgeEdge` label to `CREDIT`, `MPESA`, or `CASH`.
+  - Restructured `transCard` into `transTopRow` (`paddingLeft: 56`, Customer Name/ID + `transTotal`) and `transBodyRow` (`gradePill` aligned to `flex-start` right beneath the badge, alongside two `transSplitRow` lines for Batch/Unit Price and Salesperson+Time/Guarantor).
+  - Resolved `guarantorLabel` from `customerCredits` (`c.records`) with fallback to `authorizedBy` or `sellerName`.
+
+### 3. Behavior & Design Notes
+- `transCard` keeps `overflow: 'hidden'` and `methodBadgeEdge` keeps `top: -6, paddingTop: 9` so the badge stays clipped flush to the top edge while Row 1 sits cleanly beside it.
+
+### 4. Verification
+- Ran `tsc -p "/home/wadeace/Projects/onion sales/frontend/tsconfig.json" --noEmit` -> exited with code `0` (no errors).
+
+### 5. Open Issues / Risks
+- None.
+
+### 6. Next Steps
+- None.
+
+### 7. References
+- [App.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/App.tsx#L727-L855)
+- [App.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/App.tsx#L1892-L1960)
+
+---
+
+## 2026-11-15 — Live Sales Stream: Vertical Alignment, Compact Y-Spacing, Unit Price Format & Semi-Bold Names
+
+### 1. Summary
+Refined the Live Sales Stream card (`transCard`) in [App.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/App.tsx#L820-L845) so Customer Name, Batch ID, and `By:` align vertically on the same left axis (`44px`), tightened vertical gaps between rows, formatted the unit price concisely as `{unitPrice}/net` (e.g. `1,250/net`), and styled the salesperson and guarantor names in semi-bold (`fontWeight: '600'`).
+
+### 2. Files Modified
+- [App.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/App.tsx) —
+  - Aligned `transTopRow` (`paddingLeft: 44`) with `transBodyRow` (`gradePill` `width: 32` + `gap: 12` = `44`).
+  - Reduced vertical spacing (`transBodyRow` `marginTop: 2`, `transSplitRow` `marginTop: 2`, `transStockChip` `paddingVertical: 1`).
+  - Changed unit price text from `{quantityNets} nets @ Ksh {negotiatedUnitPrice}/net` to `{negotiatedUnitPrice.toLocaleString()}/net`.
+  - Applied `transSemiBold` (`fontWeight: '600'`) to the salesperson name (`By: ...`) and guarantor name (`Guarantor: ...`).
+
+### 3. Behavior & Design Notes
+- All three left-column lines (Customer Name/ID, Batch ID chip, and `By:` staff/time) now start at the exact same horizontal offset inside `transCard`.
+
+### 4. Verification
+- Ran `tsc -p "/home/wadeace/Projects/onion sales/frontend/tsconfig.json" --noEmit` -> exited with code `0` (no errors).
+
+### 5. Open Issues / Risks
+- None.
+
+### 6. Next Steps
+- None.
+
+### 7. References
+- [App.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/App.tsx#L820-L845)
+- [App.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/App.tsx#L1924-L2005)
+
+---
+
+## 2026-11-15 — Live Sales Stream: Tighten Gap Between Customer Name and Batch Row
+
+### 1. Summary
+Reduced the vertical gap between the Customer Name row (`transTopRow`) and the Batch ID row (`transBodyRow` / first `transSplitRow`) in [App.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/App.tsx#L808-L815).
+
+### 2. Files Modified
+- [App.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/App.tsx) — Removed `minHeight: 20` on `transTopRow`, set `transBodyRow` `marginTop: 0`, and set `{ marginTop: 0 }` on the Batch ID `transSplitRow`.
+
+### 3. Behavior & Design Notes
+- Eliminates cumulative top margins/min-height between the customer name line and the batch line while keeping `marginTop: 2` before the `By:` / `Guarantor:` row.
+
+### 4. Verification
+- Ran `tsc -p "/home/wadeace/Projects/onion sales/frontend/tsconfig.json" --noEmit` -> exited with code `0` (no errors).
+
+### 5. Open Issues / Risks
+- None.
+
+### 6. Next Steps
+- None.
+
+### 7. References
+- [App.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/App.tsx#L808-L815)
+- [App.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/App.tsx#L1935-L1955)
+
+---
+
+## 2026-11-15 — Record Sale Card: Header Cleanup & Animated Grade Slider Switch
+
+### 1. Summary
+Updated [SalesLogger.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/src/components/SalesLogger.tsx#L532-L602) to remove the `cash-register` icon and `(SAJILI MAUZO)` suffix from the `RECORD SALE` header, and replaced the two separate Grade 1 / Grade 2 buttons with a single grouped sliding pill switch (`gradeSwitchTrack` / `gradeSwitchActivePill`) matching the login and Expenses & Labour switch styling, colors, radii, and smooth `Animated.timing` transition.
+
+### 2. Files Modified
+- [SalesLogger.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/src/components/SalesLogger.tsx) —
+  - Removed `<MaterialCommunityIcons name="cash-register" />` and `(SAJILI MAUZO)`, leaving `RECORD SALE` with `#7DD3FC` in dark mode.
+  - Added `gradeSwitchWidth` + `gradeSwitchAnim` (`Animated.timing`, `220ms`, `Easing.out(Easing.cubic)`, `useNativeDriver: true`).
+  - Replaced `gradeToggleGroup` / `gradeButton` with `gradeSwitchTrack` (`#F1F5F9` light / `#1B4F55` dark, `borderRadius: 10`), `gradeSwitchActivePill` (`borderRadius: 8`, `#0891B2` for Grade 1 and `#D97706` for Grade 2), and `gradeSwitchBtn` (`borderRadius: 8`).
+
+### 3. Behavior & Design Notes
+- Both Grade 1 and Grade 2 options sit inside one unified track container with the active pill smoothly sliding between them on selection.
+
+### 4. Verification
+- Ran `tsc -p "/home/wadeace/Projects/onion sales/frontend/tsconfig.json" --noEmit` -> exited with code `0` (no errors).
+
+### 5. Open Issues / Risks
+- None.
+
+### 6. Next Steps
+- None.
+
+### 7. References
+- [SalesLogger.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/src/components/SalesLogger.tsx#L77-L90)
+- [SalesLogger.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/src/components/SalesLogger.tsx#L532-L602)
+- [SalesLogger.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/src/components/SalesLogger.tsx#L1221-L1250)
+
+---
+
+## 2026-11-15 — Compact Grade Switch Labels in Record Sale
+
+### 1. Summary
+Updated the Grade 1 / Grade 2 sliding switch buttons in [SalesLogger.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/src/components/SalesLogger.tsx#L567-L595) to a single compact line showing `Grade 1 ({price})` and `Grade 2 ({price})` (e.g., `Grade 1 (1,250)`), reducing button height.
+
+### 2. Files Modified
+- [SalesLogger.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/src/components/SalesLogger.tsx) — Replaced the two-line grade title + subtitle inside `gradeSwitchBtn` with a single `numberOfLines={1}` line `Grade 1 (price)` / `Grade 2 (price)`.
+
+### 3. Behavior & Design Notes
+- Stock counts for both sellers and Master remain visible immediately below in the `2. NUMBER OF NETS / SACKS` row.
+
+### 4. Verification
+- Ran `tsc -p "/home/wadeace/Projects/onion sales/frontend/tsconfig.json" --noEmit` -> exited with code `0` (no errors).
+
+### 5. Open Issues / Risks
+- None.
+
+### 6. Next Steps
+- None.
+
+### 7. References
+- [SalesLogger.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/src/components/SalesLogger.tsx#L567-L595)
+
+---
+
+## 2026-11-15 — Record Sale Field Labels: Remove Numbering & Simplify Titles
+
+### 1. Summary
+Removed the step numbers from the section labels in [SalesLogger.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/src/components/SalesLogger.tsx#L541-L715) and updated them to `SELECT GRADE`, `CHOOSE NUMBER OF NETS`, `PRICE PER NET`, and `PAYMENT METHOD`.
+
+### 2. Files Modified
+- [SalesLogger.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/src/components/SalesLogger.tsx) — Updated `fieldLabel` headings from `1. SELECT PRODUCE GRADE`, `2. NUMBER OF NETS / SACKS`, `3. NEGOTIATED PRICE PER NET (KSH)`, and `4. PAYMENT METHOD` to `SELECT GRADE`, `CHOOSE NUMBER OF NETS`, `PRICE PER NET`, and `PAYMENT METHOD`.
+
+### 3. Behavior & Design Notes
+- All section labels inside the Record Sale form are now unnumbered and concise.
+
+### 4. Verification
+- Ran `tsc -p "/home/wadeace/Projects/onion sales/frontend/tsconfig.json" --noEmit` -> exited with code `0` (no errors).
+
+### 5. Open Issues / Risks
+- None.
+
+### 6. Next Steps
+- None.
+
+### 7. References
+- [SalesLogger.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/src/components/SalesLogger.tsx#L541-L715)
+
+---
+
+## 2026-11-15 — Record Sale Number of Nets Controls: Borderless Container & Transparent Symbol/Preset Buttons
+
+### 1. Summary
+Updated the `CHOOSE NUMBER OF NETS` row in [SalesLogger.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/src/components/SalesLogger.tsx#L614-L654) so `qtyDisplayBox` matches the borderless light/dark container palette (`#F1F5F9` / `#1B4F55`), and removed backgrounds and borders from the `-` / `+` (`qtyAdjustBtn`) and `+5` / `+10` / `+20` (`presetPill`) controls so they render as clean theme-colored symbols and labels (`#0891B2` light / `#7DD3FC` dark).
+
+### 2. Files Modified
+- [SalesLogger.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/src/components/SalesLogger.tsx) —
+  - Removed `backgroundColor`, `borderWidth`, and `borderColor` from `qtyAdjustBtn` and `presetPill`, setting icon/text color to `#0891B2` (light) and `#7DD3FC` (dark).
+  - Updated `qtyDisplayBox` / `qtyDisplayBoxDark` to `#F1F5F9` / `#1B4F55` without borders, matching the surrounding container styling.
+
+### 3. Behavior & Design Notes
+- Quantity increment/decrement and preset batch additions (`+5`, `+10`, `+20`) keep their exact touch targets and stock-capping logic.
+
+### 4. Verification
+- Ran `tsc -p "/home/wadeace/Projects/onion sales/frontend/tsconfig.json" --noEmit` -> exited with code `0` (no errors).
+
+### 5. Open Issues / Risks
+- None.
+
+### 6. Next Steps
+- None.
+
+### 7. References
+- [SalesLogger.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/src/components/SalesLogger.tsx#L614-L654)
+- [SalesLogger.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/src/components/SalesLogger.tsx#L1253-L1300)
+
+---
+
+## 2026-11-15 — Record Sale Stock Label: Remove Cube Icon & Rename to Current Stock
+
+### 1. Summary
+Updated the stock indicator label in [SalesLogger.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/src/components/SalesLogger.tsx#L603-L610) to remove the `cube-outline` box icon and rename `Batch Stock: {availableStock} nets` to `Current Stock: {availableStock} nets`.
+
+### 2. Files Modified
+- [SalesLogger.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/src/components/SalesLogger.tsx) — Removed `<Ionicons name="cube-outline" />` and updated the label text to `Current Stock: ${availableStock} nets`.
+
+### 3. Behavior & Design Notes
+- Seller-mode assigned quota display (`Assigned: {availableStock} / {totalStockForGrade} nets`) remains intact.
+
+### 4. Verification
+- Ran `tsc -p "/home/wadeace/Projects/onion sales/frontend/tsconfig.json" --noEmit` -> exited with code `0` (no errors).
+
+### 5. Open Issues / Risks
+- None.
+
+### 6. Next Steps
+- None.
+
+### 7. References
+- [SalesLogger.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/src/components/SalesLogger.tsx#L603-L610)
+
+---
+
+## 2026-11-15 — Record Sale Price Per Net Controls: Match Number of Nets Styling
+
+### 1. Summary
+Updated the `PRICE PER NET` input row in [SalesLogger.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/src/components/SalesLogger.tsx#L667-L683) to match the `CHOOSE NUMBER OF NETS` styling: a unified borderless `priceDisplayBox` (`#F1F5F9` light / `#1B4F55` dark, `borderRadius: 10`, `height: 44`) housing `KSH` + `TextInput`, and transparent borderless `-50` / `+50` (`bargainChip`) controls in `#0891B2` (light) / `#7DD3FC` (dark).
+
+### 2. Files Modified
+- [SalesLogger.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/src/components/SalesLogger.tsx) — Replaced `currencyPrefix` + bordered `priceInput` with `priceDisplayBox` / `priceDisplayBoxDark`, and removed backgrounds and borders from `bargainChip`.
+
+### 3. Behavior & Design Notes
+- Both `CHOOSE NUMBER OF NETS` and `PRICE PER NET` now share the same `44px` height, `borderRadius: 10`, borderless surface colors, and transparent accent adjustment controls.
+
+### 4. Verification
+- Ran `tsc -p "/home/wadeace/Projects/onion sales/frontend/tsconfig.json" --noEmit` -> exited with code `0` (no errors).
+
+### 5. Open Issues / Risks
+- None.
+
+### 6. Next Steps
+- None.
+
+### 7. References
+- [SalesLogger.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/src/components/SalesLogger.tsx#L667-L683)
+- [SalesLogger.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/src/components/SalesLogger.tsx#L1323-L1365)
+
+---
+
+## 2026-11-15 — Record Sale Stock Label: Rename to Stock Balance
+
+### 1. Summary
+Renamed `Current Stock: {availableStock} nets` to `Stock Balance: {availableStock} nets` on the `CHOOSE NUMBER OF NETS` row in [SalesLogger.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/src/components/SalesLogger.tsx#L606-L610).
+
+### 2. Files Modified
+- [SalesLogger.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/src/components/SalesLogger.tsx) — Updated `Current Stock:` to `Stock Balance:`.
+
+### 3. Behavior & Design Notes
+- Seller-mode assigned quota display remains `Assigned: {availableStock} / {totalStockForGrade} nets`.
+
+### 4. Verification
+- Ran `tsc -p "/home/wadeace/Projects/onion sales/frontend/tsconfig.json" --noEmit` -> exited with code `0` (no errors).
+
+### 5. Open Issues / Risks
+- None.
+
+### 6. Next Steps
+- None.
+
+### 7. References
+- [SalesLogger.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/src/components/SalesLogger.tsx#L606-L610)
+
+---
+
+## 2026-11-15 — Record Sale Price Per Net: Remove Bargained Rate Badge
+
+### 1. Summary
+Removed the `Bargained Rate` badge (`negotiationBadge`) from the `PRICE PER NET` header row in [SalesLogger.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/src/components/SalesLogger.tsx#L657-L662).
+
+### 2. Files Modified
+- [SalesLogger.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/src/components/SalesLogger.tsx) — Removed the `negotiationBadge` view containing `<Ionicons name="swap-horizontal" />` and `Bargained Rate`.
+
+### 3. Behavior & Design Notes
+- `PRICE PER NET` now renders cleanly on its own header line above the `KSH` input row.
+
+### 4. Verification
+- Ran `tsc -p "/home/wadeace/Projects/onion sales/frontend/tsconfig.json" --noEmit` -> exited with code `0` (no errors).
+
+### 5. Open Issues / Risks
+- None.
+
+### 6. Next Steps
+- None.
+
+### 7. References
+- [SalesLogger.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/src/components/SalesLogger.tsx#L657-L662)
+
+---
+
+## 2026-11-15 — Record Sale: Remove Master Price & Min Floor Indicator Line
+
+### 1. Summary
+Removed the `Master Price: ... • Min Floor: ...` text line below the `PRICE PER NET` input in [SalesLogger.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/src/components/SalesLogger.tsx#L684-L690), while preserving the conditional minimum-floor warning if an entered price drops below `activeMinFloor`.
+
+### 2. Files Modified
+- [SalesLogger.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/src/components/SalesLogger.tsx) — Removed `masterPriceText` from `masterPriceIndicatorRow` and rendered the container only when `numericPrice > 0 && numericPrice < activeMinFloor`.
+
+### 3. Behavior & Design Notes
+- Minimum floor validation (`activeMinFloor`) remains enforced on submission and displays a warning only if violated.
+
+### 4. Verification
+- Ran `tsc -p "/home/wadeace/Projects/onion sales/frontend/tsconfig.json" --noEmit` -> exited with code `0` (no errors).
+
+### 5. Open Issues / Risks
+- None.
+
+### 6. Next Steps
+- None.
+
+### 7. References
+- [SalesLogger.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/src/components/SalesLogger.tsx#L684-L690)
+
+---
+
+## 2026-11-15 — Record Sale Total Sale Value Banner: Match App Container Styling
+
+### 1. Summary
+Updated `totalBanner` in [SalesLogger.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/src/components/SalesLogger.tsx#L692-L695) to remove the amber/yellow box and border, matching the borderless inner container palette (`#F1F5F9` light / `#1B4F55` dark, `borderRadius: 10`) with `#0891B2` / `#7DD3FC` total text.
+
+### 2. Files Modified
+- [SalesLogger.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/src/components/SalesLogger.tsx) — Updated `totalBanner`, added `totalBannerDark`, and updated `totalLabel` / `totalValue` colors to match the rest of the app.
+
+### 3. Behavior & Design Notes
+- `TOTAL SALE VALUE` now matches `gradeSwitchTrack`, `qtyDisplayBox`, and `priceDisplayBox` in both light and dark modes.
+
+### 4. Verification
+- Ran `tsc -p "/home/wadeace/Projects/onion sales/frontend/tsconfig.json" --noEmit` -> exited with code `0` (no errors).
+
+### 5. Open Issues / Risks
+- None.
+
+### 6. Next Steps
+- None.
+
+### 7. References
+- [SalesLogger.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/src/components/SalesLogger.tsx#L692-L695)
+- [SalesLogger.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/src/components/SalesLogger.tsx#L1355-L1382)
+
+---
+
+## 2026-11-15 — Live Sales Stream Header: Remove Swahili Suffix & Fix Dark Mode Contrast
+
+### 1. Summary
+Updated the Live Sales Stream section header in [App.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/App.tsx#L588-L591) from `LIVE SALES STREAM (MAUZO YA SASA)` to `LIVE SALES STREAM`, and added high-contrast dark mode colors (`#F0FDFA` for the title and `#7DD3FC` for the history icon).
+
+### 2. Files Modified
+- [App.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/App.tsx) — Removed `(MAUZO YA SASA)` and added `isDarkMode` color styling on `transTitle` (`#F0FDFA`) and `<MaterialCommunityIcons name="history" />` (`#7DD3FC`).
+
+### 3. Behavior & Design Notes
+- Ensures the `LIVE SALES STREAM` heading is clearly legible against the dark mode background.
+
+### 4. Verification
+- Ran `tsc -p "/home/wadeace/Projects/onion sales/frontend/tsconfig.json" --noEmit` -> exited with code `0` (no errors).
+
+### 5. Open Issues / Risks
+- None.
+
+### 6. Next Steps
+- None.
+
+### 7. References
+- [App.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/App.tsx#L588-L591)

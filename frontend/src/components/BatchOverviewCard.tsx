@@ -90,23 +90,16 @@ export const BatchOverviewCard: React.FC<BatchOverviewCardProps> = ({
 
   return (
     <View style={[styles.card, isDarkMode && styles.cardDark]}>
-      {/* 1. Stock ID Batch & Hauling Truck Reg */}
-      <View style={styles.batchInfoRow}>
+      {/* 1. Stock ID Batch & Truck Reg */}
+      <View style={[styles.batchInfoRow, isDarkMode && styles.batchInfoRowDark]}>
         <View style={styles.batchIdGroup}>
-          <Text style={styles.batchLabel}>STOCK ID BATCH</Text>
+          <Text style={[styles.batchLabel, isDarkMode && { color: '#7DD3FC' }]}>STOCK ID BATCH</Text>
           <Text style={[styles.batchNumber, isDarkMode && styles.textWhite]}>
             {currentBatch.batchNumber}
           </Text>
-        </View>
-
-        <View style={[styles.plateBadge, isDarkMode && styles.plateBadgeDark]}>
-          <Ionicons name="bus-outline" size={16} color="#0891B2" />
-          <View>
-            <Text style={styles.plateSubLabel}>HAULING TRUCK</Text>
-            <Text style={[styles.plateText, isDarkMode && styles.textWhite]}>
-              {currentBatch.truckPlate}
-            </Text>
-          </View>
+          <Text style={[styles.truckPlateBelow, isDarkMode && { color: '#CFE9EC' }]}>
+            {currentBatch.truckPlate}
+          </Text>
         </View>
       </View>
 
@@ -216,32 +209,35 @@ export const BatchOverviewCard: React.FC<BatchOverviewCardProps> = ({
 const styles = StyleSheet.create({
   card: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 16,
+    borderRadius: 12,
+    padding: 14,
     marginHorizontal: 14,
     marginTop: 10,
     marginBottom: 10,
-    shadowColor: '#0891B2',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
     elevation: 3,
-    borderWidth: 1.5,
-    borderColor: '#CCFBF1',
   },
   cardDark: {
     backgroundColor: '#256A71',
-    borderColor: '#7AB5BC',
-    borderWidth: 0.75,
     shadowColor: '#0D2C30',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    elevation: 5,
   },
   batchInfoRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingBottom: 14,
+    paddingBottom: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#F1F5F9',
+  },
+  batchInfoRowDark: {
+    borderBottomColor: 'rgba(122, 181, 188, 0.25)',
   },
   batchIdGroup: {
     flex: 1,
@@ -259,32 +255,12 @@ const styles = StyleSheet.create({
     marginTop: 2,
     letterSpacing: -0.3,
   },
-  plateBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: '#F0FDFA',
-    borderWidth: 1.5,
-    borderColor: '#A5F3FC',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-  },
-  plateBadgeDark: {
-    backgroundColor: '#1B4F55',
-    borderColor: 'rgba(122, 181, 188, 0.45)',
-    borderWidth: 0.75,
-  },
-  plateSubLabel: {
-    fontSize: 9,
+  truckPlateBelow: {
+    fontSize: 13,
     fontWeight: '800',
-    color: '#0E7490',
-    letterSpacing: 0.5,
-  },
-  plateText: {
-    fontSize: 14,
-    fontWeight: '900',
-    color: '#0F172A',
+    color: '#475569',
+    marginTop: 2,
+    letterSpacing: 0.3,
   },
   stockSection: {
     paddingTop: 12,
@@ -365,18 +341,24 @@ const styles = StyleSheet.create({
   },
   emptyContainer: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
+    borderRadius: 12,
     padding: 24,
     marginHorizontal: 14,
     marginTop: 10,
     alignItems: 'center',
-    borderWidth: 1.5,
-    borderColor: '#CCFBF1',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    elevation: 3,
   },
   emptyContainerDark: {
     backgroundColor: '#256A71',
-    borderColor: '#7AB5BC',
-    borderWidth: 0.75,
+    shadowColor: '#0D2C30',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    elevation: 5,
   },
   emptyTitle: {
     fontSize: 16,

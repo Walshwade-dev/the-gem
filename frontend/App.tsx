@@ -586,8 +586,8 @@ function MainScreen() {
           <View style={styles.transactionsSection}>
             <View style={styles.transHeaderRow}>
               <View style={styles.transTitleRow}>
-                <MaterialCommunityIcons name="history" size={17} color={THEME.colors.primary} />
-                <Text style={styles.transTitle}>LIVE SALES STREAM (MAUZO YA SASA)</Text>
+                <MaterialCommunityIcons name="history" size={17} color={isDarkMode ? '#7DD3FC' : THEME.colors.primary} />
+                <Text style={[styles.transTitle, isDarkMode && { color: '#F0FDFA' }]}>LIVE SALES STREAM</Text>
               </View>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                 <TouchableOpacity
@@ -737,27 +737,77 @@ function MainScreen() {
                     minute: '2-digit',
                   })
                 : '';
+              const creditCustomer =
+                item.paymentMethod === 'CREDIT'
+                  ? customerCredits.find(
+                      (c) =>
+                        c.customerName?.toLowerCase() === item.buyerName?.toLowerCase() ||
+                        (item.buyerNationalId && c.customerNationalId === item.buyerNationalId)
+                    )
+                  : undefined;
+              const creditEntry = creditCustomer?.records.find(
+                (r) =>
+                  r.batchId === item.batchId &&
+                  (r.totalOwed === item.totalAmount || r.quantityNets === item.quantityNets)
+              );
+              const guarantorLabel =
+                item.paymentMethod === 'CREDIT'
+                  ? creditEntry?.guarantorName ||
+                    creditEntry?.authorizedBy ||
+                    item.sellerName ||
+                    'Staff'
+                  : null;
               return (
               <View key={item.id} style={[styles.transCard, isDarkMode && styles.transCardDark]}>
-                <View style={styles.transLeft}>
-                  <View style={[
-                    styles.gradePill, 
-                    item.grade === 'GRADE_1' ? styles.gradePillG1 : styles.gradePillG2
-                  ]}>
+                {/* Top-left payment method badge clipped flush to top edge */}
+                <View
+                  style={[
+                    styles.methodBadgeEdge,
+                    item.paymentMethod === 'CASH' && styles.methodCash,
+                    item.paymentMethod === 'MPESA' && styles.methodMpesa,
+                    item.paymentMethod === 'CREDIT' && styles.methodCredit,
+                  ]}
+                >
+                  <Text style={styles.methodBadgeText}>
+                    {item.paymentMethod === 'CREDIT'
+                      ? 'CREDIT'
+                      : item.paymentMethod === 'MPESA'
+                      ? 'MPESA'
+                      : 'CASH'}
+                  </Text>
+                </View>
+
+                {/* Line 1: Customer Name/ID beside badge + Amount Paid on far right */}
+                <View style={styles.transTopRow}>
+                  <Text
+                    style={[styles.transBuyer, isDarkMode && { color: '#FFFFFF' }]}
+                    numberOfLines={1}
+                    ellipsizeMode="tail"
+                  >
+                    {displayCustomer}
+                    {item.buyerNationalId ? ` (${item.buyerNationalId})` : ''}
+                  </Text>
+                  <Text style={[styles.transTotal, isDarkMode && { color: '#22D3EE' }]}>
+                    Ksh {item.totalAmount.toLocaleString()}
+                  </Text>
+                </View>
+
+                {/* Body: Circular grade label moved up under badge + Batch/Unit Price + Staff/Time/Guarantor */}
+                <View style={styles.transBodyRow}>
+                  <View
+                    style={[
+                      styles.gradePill,
+                      item.grade === 'GRADE_1' ? styles.gradePillG1 : styles.gradePillG2,
+                    ]}
+                  >
                     <Text style={styles.gradePillText}>
                       {item.grade === 'GRADE_1' ? 'G1' : 'G2'}
                     </Text>
                   </View>
+
                   <View style={styles.transTextCol}>
-                    <View style={styles.transCustomerBatchRow}>
-                      <Text
-                        style={[styles.transBuyer, isDarkMode && { color: '#FFFFFF' }]}
-                        numberOfLines={1}
-                        ellipsizeMode="tail"
-                      >
-                        {displayCustomer}
-                        {item.buyerNationalId ? ` (${item.buyerNationalId})` : ''}
-                      </Text>
+                    {/* Line 2: Batch name/id on left + unit price on far right */}
+                    <View style={[styles.transSplitRow, { marginTop: 0 }]}>
                       <View style={[styles.transStockChip, isDarkMode && styles.transStockChipDark]}>
                         <Text
                           style={[styles.transStockChipText, isDarkMode && { color: '#7DD3FC' }]}
@@ -767,13 +817,30 @@ function MainScreen() {
                           {saleBatch?.batchNumber || 'Active Batch'}
                         </Text>
                       </View>
+                      <Text style={[styles.transDetailsRight, isDarkMode && { color: '#CFE9EC' }]} numberOfLines={1}>
+                        {item.negotiatedUnitPrice.toLocaleString()}/net
+                      </Text>
                     </View>
-                    <Text style={[styles.transDetails, isDarkMode && { color: '#CFE9EC' }]} numberOfLines={1}>
-                      {item.quantityNets} nets @ Ksh {item.negotiatedUnitPrice.toLocaleString()}/net
-                    </Text>
-                    <Text style={[styles.transMetaLine, isDarkMode && { color: '#94A3B8' }]} numberOfLines={1}>
-                      By: {item.sellerName || 'Staff'}{formattedTime ? ` • ${formattedTime}` : ''}
-                    </Text>
+
+                    {/* Line 3: Salesperson & time on left + guarantor name on far right if credit */}
+                    <View style={styles.transSplitRow}>
+                      <Text
+                        style={[styles.transMetaLine, isDarkMode && { color: '#94A3B8' }, { flex: 1, marginTop: 0 }]}
+                        numberOfLines={1}
+                      >
+                        By: <Text style={styles.transSemiBold}>{item.sellerName || 'Staff'}</Text>
+                        {formattedTime ? ` • ${formattedTime}` : ''}
+                      </Text>
+                      {guarantorLabel && (
+                        <Text
+                          style={[styles.transGuarantorText, isDarkMode && { color: '#FDE68A' }]}
+                          numberOfLines={1}
+                        >
+                          Guarantor: <Text style={styles.transSemiBold}>{guarantorLabel}</Text>
+                        </Text>
+                      )}
+                    </View>
+
                     {item.paymentMethod === 'MPESA' && item.mpesaReceiptCode && (
                       <Text style={[styles.transDetails, { color: isDarkMode ? '#6EE7B7' : '#047857', fontWeight: '700' }]} numberOfLines={1}>
                         M-Pesa Ref: {item.mpesaReceiptCode}
@@ -796,22 +863,6 @@ function MainScreen() {
                         </Text>
                       </View>
                     )}
-                  </View>
-                </View>
-
-                <View style={styles.transRight}>
-                  <Text style={[styles.transTotal, isDarkMode && { color: '#22D3EE' }]}>
-                    Ksh {item.totalAmount.toLocaleString()}
-                  </Text>
-                  <View style={[
-                    styles.methodBadge,
-                    item.paymentMethod === 'CASH' && styles.methodCash,
-                    item.paymentMethod === 'MPESA' && styles.methodMpesa,
-                    item.paymentMethod === 'CREDIT' && styles.methodCredit,
-                  ]}>
-                    <Text style={styles.methodBadgeText}>
-                      {item.paymentMethod === 'CREDIT' ? 'CREDIT' : `PAID • ${item.paymentMethod}`}
-                    </Text>
                   </View>
                 </View>
               </View>
@@ -1847,26 +1898,68 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   transCard: {
+    position: 'relative',
+    overflow: 'hidden',
     backgroundColor: '#FFFFFF',
-    borderRadius: 14,
-    padding: 14,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingTop: 6,
+    paddingBottom: 10,
+    marginTop: 4,
     marginBottom: 8,
-    borderWidth: 1,
-    borderColor: '#CCFBF1',
-    shadowColor: '#0891B2',
+    shadowColor: '#000000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.06,
     shadowRadius: 6,
-    elevation: 2,
+    elevation: 3,
   },
   transCardDark: {
     backgroundColor: '#256A71',
-    borderColor: '#7AB5BC',
-    borderWidth: 0.75,
     shadowColor: '#0D2C30',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    elevation: 5,
+  },
+  methodBadgeEdge: {
+    position: 'absolute',
+    top: -6,
+    left: 10,
+    zIndex: 2,
+    paddingHorizontal: 6,
+    paddingTop: 9,
+    paddingBottom: 3,
+    borderBottomLeftRadius: 6,
+    borderBottomRightRadius: 6,
+  },
+  transTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingLeft: 44,
+    gap: 8,
+  },
+  transBodyRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    marginTop: 0,
+  },
+  transSplitRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 2,
+  },
+  transSemiBold: {
+    fontWeight: '600',
+  },
+  transGuarantorText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#B45309',
+    flexShrink: 0,
   },
   transLeft: {
     flexDirection: 'row',
@@ -1889,9 +1982,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#E0F2FE',
     borderRadius: 6,
     paddingHorizontal: 6,
-    paddingVertical: 2,
+    paddingVertical: 1,
     flexShrink: 1,
-    maxWidth: '48%',
     minWidth: 0,
   },
   transStockChipDark: {
@@ -1909,6 +2001,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     justifyContent: 'center',
     alignItems: 'center',
+    marginTop: 1,
   },
   gradePillG1: {
     backgroundColor: '#0891B2', // Turquoise Blue
@@ -1935,7 +2028,15 @@ const styles = StyleSheet.create({
   },
   transRight: {
     alignItems: 'flex-end',
-    gap: 4,
+    gap: 3,
+    marginLeft: 8,
+    flexShrink: 0,
+  },
+  transDetailsRight: {
+    fontSize: 10.5,
+    fontWeight: '600',
+    color: THEME.colors.textSecondary,
+    textAlign: 'right',
   },
   transTotal: {
     fontSize: 14,
@@ -2202,17 +2303,20 @@ const styles = StyleSheet.create({
   },
   streamFilterPanel: {
     backgroundColor: '#F8FAFC',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
     borderRadius: 12,
     padding: 10,
     marginBottom: 10,
     gap: 8,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 5,
+    elevation: 2,
   },
   streamFilterPanelDark: {
     backgroundColor: '#1B4F55',
-    borderColor: '#7AB5BC',
-    borderWidth: 0.75,
+    shadowColor: '#0D2C30',
+    shadowOpacity: 0.25,
   },
   streamFilterGroup: {
     gap: 4,
