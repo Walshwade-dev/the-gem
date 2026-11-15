@@ -3029,3 +3029,93 @@ Updated the Live Sales Stream section header in [App.tsx](file:///home/wadeace/P
 
 ### 7. References
 - [App.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/App.tsx#L588-L591)
+
+---
+
+## 2026-11-15 — GitHub Push & Updated Release APK Install
+
+### 1. Summary
+Committed and pushed the latest Sales Logger, Live Sales Stream, and Batch Overview updates (`fe9d7c2`) to `origin/main`, rebuilt [app-release.apk](file:///home/wadeace/Projects/onion%20sales/frontend/android/app/build/outputs/apk/release/app-release.apk), and installed it onto the connected physical phone (`CI32ETYQ240929071929`, `Neon_Smarta_2_T`).
+
+### 2. Files Modified
+- None (commit `fe9d7c2` pushed existing workspace changes).
+
+### 3. Behavior & Design Notes
+- The installed APK (`com.thegem.onionsales`) now includes all recent Sales page, Record Sale, and Live Sales Stream refinements.
+
+### 4. Verification
+- `git commit` (`fe9d7c2`) and `git push origin main` (`1eff7d1..fe9d7c2`) -> exited with code `0`.
+- `./gradlew assembleRelease` -> `BUILD SUCCESSFUL in 1m 12s` (exit code `0`).
+- `adb -s CI32ETYQ240929071929 install -r .../app-release.apk` -> `Performing Streamed Install` / `Success` (exit code `0`).
+
+### 5. Open Issues / Risks
+- None.
+
+### 6. Next Steps
+- Open **The Gem** on `Neon_Smarta_2_T` to test the updated build.
+
+### 7. References
+- [app-release.apk](file:///home/wadeace/Projects/onion%20sales/frontend/android/app/build/outputs/apk/release/app-release.apk)
+
+---
+
+## 2026-11-15 — Profile Page Containers: Remove Borders & Match App Card Styling & Drop Shadows
+
+### 1. Summary
+Updated the Profile page containers (`profileCard`, `profileCardDark`, `policyCard`, `policyCardDark`, `metricCard`, `discrepancyModalCardDark`) in [UserProfileSection.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/src/components/ui/UserProfileSection.tsx#L1271-L2405) to remove outer borders and apply the same `#FFFFFF` / `#256A71` surfaces, `borderRadius: 12`, and drop-shadow elevation used across the rest of the application.
+
+### 2. Files Modified
+- [UserProfileSection.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/src/components/ui/UserProfileSection.tsx) —
+  - Removed `borderWidth` and `borderColor` from `profileCard`, `profileCardDark`, `policyCard`, `policyCardDark`, `metricCard`, and `discrepancyModalCardDark`.
+  - Applied consistent drop shadows (`#000000` / `0.06` / `elevation: 3` in light mode; `#0D2C30` / `0.3` / `elevation: 5` in dark mode).
+
+### 3. Behavior & Design Notes
+- All main cards on the Profile tab now match the Sales, Products, and Ledger cards in both light and dark modes.
+
+### 4. Verification
+- Ran `tsc -p "/home/wadeace/Projects/onion sales/frontend/tsconfig.json" --noEmit` -> exited with code `0` (no errors).
+
+### 5. Open Issues / Risks
+- None.
+
+### 6. Next Steps
+- Let me know if you'd like to proceed with setting up Neon + Render (or ngrok/Cloudflare tunnel) so the mobile app works off-Wi-Fi.
+
+### 7. References
+- [UserProfileSection.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/src/components/ui/UserProfileSection.tsx#L1271-L1290)
+- [UserProfileSection.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/src/components/ui/UserProfileSection.tsx#L1529-L1546)
+- [UserProfileSection.tsx](file:///home/wadeace/Projects/onion%20sales/frontend/src/components/ui/UserProfileSection.tsx#L1819-L1832)
+
+
+---
+
+## Report — Neon Database Provisioning, Migration & Render Blueprint Setup
+
+### 1. Summary
+Provisioned the Neon PostgreSQL 16 project (`the-gem`) via Neon MCP, applied the initial schema migration (`0001_init.sql`) against Neon, verified all 35 `public` tables, and added a root `render.yaml` Blueprint for deploying `server/` as a free-tier Node web service on Render.
+
+### 2. Files Changed / Added
+- Added [render.yaml](file:///home/wadeace/Projects/onion%20sales/render.yaml): Render Blueprint defining `the-gem-server` (`runtime: node`, `plan: free`, `rootDir: server`, `buildCommand: npm install && npm run build`, `startCommand: npm run db:migrate && npm start`, `healthCheckPath: /health`).
+
+### 3. Infrastructure & Database Changes
+- Created Neon project `the-gem` (`id: rapid-morning-51124707`, `org_id: org-small-mountain-26420107`, `region_id: aws-eu-west-2`, `pg_version: 16`).
+- Ran `npm --prefix "/home/wadeace/Projects/onion sales/server" run db:migrate` against Neon `neondb`; verified 35 tables created in `public`.
+
+### 4. Verification
+- `npm --prefix "/home/wadeace/Projects/onion sales/server" run db:migrate` exited `0` (`Migrations applied successfully.`).
+- `Neon.get_database_tables` confirmed 35 `BASE TABLE` entries in `public`.
+- `npm --prefix "/home/wadeace/Projects/onion sales/server" run build` (`tsc`) exited `0`.
+
+### 5. Open Issues / Risks
+- Render MCP is not available in this environment, so connecting the GitHub repo to Render (or an alternative free host like Koyeb) must be completed in the provider's web dashboard.
+- Render's free tier spins down after ~15 minutes of inactivity (30–60s cold start on first request).
+
+### 6. Next Steps
+- Deploy `server/` on Render (via `render.yaml` Blueprint) or Koyeb using the Neon `DATABASE_URL` and Clerk keys.
+- Once the public HTTPS backend URL is live, update `EXPO_PUBLIC_API_URL` in `frontend/.env.local` and rebuild the Android release APK.
+
+### 7. References
+- [render.yaml](file:///home/wadeace/Projects/onion%20sales/render.yaml)
+- [server/src/index.ts](file:///home/wadeace/Projects/onion%20sales/server/src/index.ts#L1-L49)
+- [server/src/app.ts](file:///home/wadeace/Projects/onion%20sales/server/src/app.ts#L1-L77)
+- [server/src/config.ts](file:///home/wadeace/Projects/onion%20sales/server/src/config.ts#L1-L25)
