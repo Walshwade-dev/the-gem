@@ -20,6 +20,8 @@ CREATE TABLE IF NOT EXISTS salespeople (
   master_id uuid NOT NULL REFERENCES masters(id),
   phone_e164 text NOT NULL,
   full_name text NOT NULL,
+  email text,
+  clerk_user_id text UNIQUE,
   national_id text,
   passphrase_hash text,
   status text NOT NULL DEFAULT 'INVITED'

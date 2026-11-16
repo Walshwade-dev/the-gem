@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { and, desc, eq, gt, isNull } from 'drizzle-orm';
 import { Webhook } from 'svix';
 import { z } from 'zod';
+import { createClerkClient } from '@clerk/backend';
 import {
   devices,
   expenseCategories,
@@ -116,7 +117,7 @@ export async function registerAuthRoutes(app: FastifyInstance, deps: AppRouteDep
     sellerJwtSecret: config.SELLER_JWT_SECRET,
   });
 
-  // POST /auth/master/sync - verifies Clerk JWT directly & creates/updates Master row
+  // POST /auth/master/sync - verifies Clerk JWT directly & creates/updates Master or Salesperson row
   app.post('/auth/master/sync', async (request, reply) => {
     const authHeader = request.headers.authorization;
     if (!authHeader?.startsWith('Bearer ')) {
@@ -140,6 +141,68 @@ export async function registerAuthRoutes(app: FastifyInstance, deps: AppRouteDep
       return reply.code(401).send({ error: 'INVALID_TOKEN' });
     }
 
+    // 1. Check if user is an existing salesperson
+    const [existingSeller] = await db
+      .select()
+      .from(salespeople)
+      .where(eq(salespeople.clerkUserId, verified.clerkUserId))
+      .limit(1);
+
+    if (existingSeller) {
+      let seller = existingSeller;
+      if (parsed.data.fullName || parsed.data.email) {
+        const [updated] = await db
+          .update(salespeople)
+          .set({
+            fullName: parsed.data.fullName ?? seller.fullName,
+            email: parsed.data.email ?? seller.email,
+          })
+          .where(eq(salespeople.id, seller.id))
+          .returning();
+        seller = updated;
+      }
+      return reply.send({ role: 'SELLER', salesperson: seller });
+    }
+
+    // 2. Check if Clerk public metadata defines role === 'SELLER'
+    if (config.CLERK_SECRET_KEY) {
+      try {
+        const clerk = createClerkClient({ secretKey: config.CLERK_SECRET_KEY });
+        const clerkUser = await clerk.users.getUser(verified.clerkUserId);
+        const metaRole = (clerkUser.publicMetadata as { role?: string })?.role;
+        const metaMasterId = (clerkUser.publicMetadata as { masterId?: string })?.masterId;
+        if (metaRole === 'SELLER') {
+          let targetMasterId = metaMasterId;
+          if (!targetMasterId) {
+            const [anyMaster] = await db.select({ id: masters.id }).from(masters).limit(1);
+            targetMasterId = anyMaster?.id;
+          }
+          if (targetMasterId) {
+            const [createdSeller] = await db
+              .insert(salespeople)
+              .values({
+                masterId: targetMasterId,
+                clerkUserId: verified.clerkUserId,
+                email: parsed.data.email ?? `${verified.clerkUserId}@clerk.local`,
+                fullName:
+                  parsed.data.fullName ??
+                  ([clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(' ') ||
+                    'Sales Agent'),
+                phoneE164: parsed.data.phoneE164
+                  ? normalizeKenyaPhoneToE164(parsed.data.phoneE164)
+                  : `+2547${Math.floor(10000000 + Math.random() * 90000000)}`,
+                status: 'ACTIVE',
+              })
+              .returning();
+            return reply.send({ role: 'SELLER', salesperson: createdSeller });
+          }
+        }
+      } catch {
+        // Fallback to master sync
+      }
+    }
+
+    // 3. User is a Master Admin (MERCHANT)
     const [existing] = await db
       .select()
       .from(masters)
@@ -174,8 +237,145 @@ export async function registerAuthRoutes(app: FastifyInstance, deps: AppRouteDep
       master = updated;
     }
 
-    return reply.send({ master });
+    return reply.send({ role: 'MERCHANT', master });
   });
+
+  // POST /auth/clerk/create-user - Master provisions a new Clerk user with chosen role
+  app.post(
+    '/auth/clerk/create-user',
+    { preHandler: [authenticate, requireMaster] },
+    async (request, reply) => {
+      if (!config.CLERK_SECRET_KEY) {
+        return reply.code(503).send({
+          error: 'CLERK_SECRET_NOT_CONFIGURED',
+          message: 'Backend Clerk secret key is not configured.',
+        });
+      }
+
+      const parsed = z
+        .object({
+          email: z.string().email('Valid email is required'),
+          password: z.string().min(8, 'Password must be at least 8 characters long'),
+          fullName: z.string().min(1, 'Full name is required'),
+          role: z.enum(['MERCHANT', 'SELLER']),
+          phoneE164: z.string().optional(),
+        })
+        .safeParse(request.body);
+
+      if (!parsed.success) return sendValidationError(reply, parsed.error);
+
+      const { email, password, fullName, role, phoneE164 } = parsed.data;
+      const clerk = createClerkClient({ secretKey: config.CLERK_SECRET_KEY });
+
+      const nameParts = fullName.trim().split(/\s+/);
+      const firstName = nameParts[0] || 'User';
+      const lastName = nameParts.slice(1).join(' ') || undefined;
+
+      let clerkUser;
+      try {
+        clerkUser = await clerk.users.createUser({
+          emailAddress: [email.trim().toLowerCase()],
+          password: password.trim(),
+          firstName,
+          lastName,
+          publicMetadata: {
+            role,
+            masterId: request.auth!.masterId,
+            createdById: request.auth!.userId,
+            createdAt: new Date().toISOString(),
+          },
+        });
+      } catch (err: any) {
+        const clerkErrors = err?.errors;
+        const msg =
+          Array.isArray(clerkErrors) && clerkErrors.length > 0
+            ? clerkErrors.map((e: any) => e.longMessage || e.message).join('; ')
+            : err instanceof Error
+              ? err.message
+              : 'Failed to create user in Clerk';
+        return reply.code(400).send({
+          error: 'CLERK_CREATE_USER_FAILED',
+          message: msg,
+        });
+      }
+
+      const normalizedPhone = phoneE164
+        ? normalizeKenyaPhoneToE164(phoneE164)
+        : null;
+
+      if (role === 'MERCHANT') {
+        const [existingMaster] = await db
+          .select()
+          .from(masters)
+          .where(eq(masters.clerkUserId, clerkUser.id))
+          .limit(1);
+
+        if (!existingMaster) {
+          const [newMaster] = await db
+            .insert(masters)
+            .values({
+              clerkUserId: clerkUser.id,
+              email: email.trim().toLowerCase(),
+              fullName: fullName.trim(),
+              storeName: 'Onion Store',
+              phoneE164: normalizedPhone,
+            })
+            .returning();
+          await seedMasterDefaults(db, newMaster.id);
+        }
+      } else {
+        // role === 'SELLER'
+        const sellerPhone =
+          normalizedPhone || `+2547${Math.floor(10000000 + Math.random() * 90000000)}`;
+
+        const [existingSeller] = await db
+          .select()
+          .from(salespeople)
+          .where(eq(salespeople.clerkUserId, clerkUser.id))
+          .limit(1);
+
+        if (!existingSeller) {
+          await db
+            .insert(salespeople)
+            .values({
+              masterId: request.auth!.masterId,
+              clerkUserId: clerkUser.id,
+              email: email.trim().toLowerCase(),
+              phoneE164: sellerPhone,
+              fullName: fullName.trim(),
+              status: 'ACTIVE',
+            });
+        }
+      }
+
+      await writeAuditEvent(db, {
+        masterId: request.auth!.masterId,
+        actorType: 'MASTER',
+        actorId: request.auth!.userId,
+        action: 'CLERK_USER_PROVISIONED',
+        entityType: 'CLERK_USER',
+        entityId: clerkUser.id,
+        afterState: {
+          email: email.trim().toLowerCase(),
+          fullName: fullName.trim(),
+          role,
+          clerkUserId: clerkUser.id,
+        },
+        outcome: 'SUCCESS',
+      });
+
+      return reply.send({
+        success: true,
+        message: `Account created successfully in Clerk for ${fullName} (${role === 'MERCHANT' ? 'Master Admin' : 'Sales Agent'}).`,
+        user: {
+          id: clerkUser.id,
+          email: email.trim().toLowerCase(),
+          fullName: fullName.trim(),
+          role,
+        },
+      });
+    }
+  );
 
   // POST /webhooks/clerk - Svix webhook verification
   app.post('/webhooks/clerk', async (request, reply) => {

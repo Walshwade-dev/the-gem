@@ -111,13 +111,13 @@ export const MasterBatchLedgerReceipt: React.FC<MasterBatchLedgerReceiptProps> =
 
   const batchReconciliations = [...reconciliations]
     .filter((r) => r.batchId === currentBatch.id)
-    .sort((a, b) => (a.dayNumber - b.dayNumber) || a.date.localeCompare(b.date));
+    .sort((a, b) => ((a.dayNumber ?? 0) - (b.dayNumber ?? 0)) || a.date.localeCompare(b.date));
 
   const dayDateSet = new Set<string>();
   batchReconciliations.forEach((r) => dayDateSet.add(r.date.slice(0, 10)));
   sales.filter((s) => s.batchId === currentBatch.id).forEach((s) => dayDateSet.add(s.timestamp.slice(0, 10)));
   expenses.filter((e) => e.batchId === currentBatch.id).forEach((e) => dayDateSet.add(e.date.slice(0, 10)));
-  creditRepayments.filter((r) => r.batchId === currentBatch.id).forEach((r) => dayDateSet.add(r.date.slice(0, 10)));
+  creditRepayments.filter((r) => r.batchId === currentBatch.id).forEach((r) => dayDateSet.add((r.timestamp || r.dateIssued).slice(0, 10)));
 
   const sortedDayDates = Array.from(dayDateSet).sort();
   const availableDays = sortedDayDates.map((dateStr, idx) => {
@@ -230,7 +230,7 @@ export const MasterBatchLedgerReceipt: React.FC<MasterBatchLedgerReceiptProps> =
     .filter(
       (r) =>
         r.batchId === currentBatch.id &&
-        (selectedDayFilter === 'ALL' || r.date.slice(0, 10) === selectedDayFilter)
+        (selectedDayFilter === 'ALL' || (r.timestamp || r.dateIssued).slice(0, 10) === selectedDayFilter)
     )
     .reduce((sum, r) => sum + r.amountPaid, 0);
 

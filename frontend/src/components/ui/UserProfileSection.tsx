@@ -17,6 +17,7 @@ import {
   Modal,
   PermissionsAndroid,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { THEME } from '../../constants/theme';
@@ -76,11 +77,78 @@ export const UserProfileSection: React.FC<UserProfileSectionProps> = ({
     setPochiPhoneNumber,
     setMasterPhoneNumber,
     incrementSimSmsSent,
+    createClerkUser,
   } = useAppStore();
 
   const [activeSims, setActiveSims] = useState<SimSlotInfo[]>([]);
   const [testSmsPhone, setTestSmsPhone] = useState('');
   const [sendingTestSms, setSendingTestSms] = useState(false);
+
+  // Master Clerk User Creation State
+  const [newUserName, setNewUserName] = useState('');
+  const [newUserEmail, setNewUserEmail] = useState('');
+  const [newUserPassword, setNewUserPassword] = useState('');
+  const [showNewUserPassword, setShowNewUserPassword] = useState(false);
+  const [newUserRole, setNewUserRole] = useState<'MERCHANT' | 'SELLER'>('MERCHANT');
+  const [newUserPhone, setNewUserPhone] = useState('');
+  const [isCreatingUser, setIsCreatingUser] = useState(false);
+  const [createUserError, setCreateUserError] = useState<string | null>(null);
+  const [createdUserSuccess, setCreatedUserSuccess] = useState<{
+    email: string;
+    fullName: string;
+    role: 'MERCHANT' | 'SELLER';
+  } | null>(null);
+
+  const handleCreateClerkUser = async () => {
+    setCreateUserError(null);
+    if (!newUserName.trim()) {
+      setCreateUserError('Full name is required.');
+      return;
+    }
+    if (!newUserEmail.trim() || !newUserEmail.includes('@')) {
+      setCreateUserError('Please enter a valid email address.');
+      return;
+    }
+    if (newUserPassword.length < 8) {
+      setCreateUserError('Password must be at least 8 characters long.');
+      return;
+    }
+
+    setIsCreatingUser(true);
+    try {
+      const res = await createClerkUser({
+        fullName: newUserName.trim(),
+        email: newUserEmail.trim(),
+        password: newUserPassword,
+        role: newUserRole,
+        phoneE164: newUserPhone.trim() || undefined,
+      });
+
+      if (!res.success) {
+        setCreateUserError(res.message);
+      } else {
+        setCreatedUserSuccess({
+          email: newUserEmail.trim(),
+          fullName: newUserName.trim(),
+          role: newUserRole,
+        });
+        setNewUserName('');
+        setNewUserEmail('');
+        setNewUserPassword('');
+        setNewUserPhone('');
+        Alert.alert(
+          'User Created Successfully',
+          `Clerk account created for ${newUserName.trim()} with role ${
+            newUserRole === 'MERCHANT' ? 'Master Admin' : 'Sales Agent'
+          }.\n\nThey can now sign in using ${newUserEmail.trim()} and their chosen password.`
+        );
+      }
+    } catch (err) {
+      setCreateUserError(err instanceof Error ? err.message : 'Failed to create user in Clerk.');
+    } finally {
+      setIsCreatingUser(false);
+    }
+  };
 
   useEffect(() => {
     if (Platform.OS === 'android' && simSmsGatewayEnabled) {
@@ -1273,6 +1341,240 @@ export const UserProfileSection: React.FC<UserProfileSectionProps> = ({
           </View>
         )}
       </View>
+
+      {/* 5B. Provision User Login (Clerk Auth) - MASTER EXCLUSIVE */}
+      {role === 'MERCHANT' && (
+        <View style={[styles.metricCard, isDarkMode && styles.profileCardDark]}>
+          <View style={styles.cardHeaderRow}>
+            <View style={{ flex: 1, paddingRight: 8 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Ionicons name="person-add" size={16} color={isDarkMode ? '#5EEAD4' : '#059669'} />
+                <Text style={[styles.cardTitle, isDarkMode && styles.textWhite]}>
+                  CREATE USER LOGIN (CLERK AUTH)
+                </Text>
+              </View>
+              <Text style={[styles.cardSubtitle, isDarkMode && styles.textSubtleDark, { marginTop: 4 }]}>
+                Provision new Master or Salesperson login credentials directly into Clerk. The user can sign in using their email & password under their chosen role.
+              </Text>
+            </View>
+            <View style={[styles.truckPlateBadge, isDarkMode && styles.truckPlateBadgeDark]}>
+              <Text style={[styles.truckPlateText, isDarkMode && { color: '#5EEAD4' }]}>
+                MASTER ONLY
+              </Text>
+            </View>
+          </View>
+
+          {/* Error Banner */}
+          {createUserError ? (
+            <View style={[styles.errorBannerBox, isDarkMode && styles.errorBannerBoxDark]}>
+              <Ionicons name="alert-circle" size={16} color={isDarkMode ? '#FCA5A5' : '#DC2626'} />
+              <Text style={[styles.errorBannerText, isDarkMode && { color: '#FCA5A5' }]}>
+                {createUserError}
+              </Text>
+            </View>
+          ) : null}
+
+          {/* Success Banner */}
+          {createdUserSuccess ? (
+            <View style={[styles.successBannerBox, isDarkMode && styles.successBannerBoxDark]}>
+              <Ionicons name="checkmark-circle" size={18} color={isDarkMode ? '#6EE7B7' : '#059669'} />
+              <View style={{ flex: 1, marginLeft: 8 }}>
+                <Text style={[styles.successBannerTitle, isDarkMode && { color: '#6EE7B7' }]}>
+                  User Successfully Provisioned in Clerk!
+                </Text>
+                <Text style={[styles.successBannerText, isDarkMode && styles.textMutedDark]}>
+                  {createdUserSuccess.fullName} ({createdUserSuccess.email}) has been provisioned as a {createdUserSuccess.role === 'MERCHANT' ? 'Master Admin' : 'Sales Agent'}. They can now sign in on the login screen.
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => setCreatedUserSuccess(null)} style={{ padding: 4 }}>
+                <Ionicons name="close" size={16} color={isDarkMode ? '#CFE9EC' : '#64748B'} />
+              </TouchableOpacity>
+            </View>
+          ) : null}
+
+          {/* Role Selector */}
+          <View style={styles.clerkInputGroup}>
+            <Text style={[styles.clerkFieldLabel, isDarkMode && styles.textWhite]}>
+              ASSIGN OPERATIONAL ROLE
+            </Text>
+            <View style={styles.rolePickerRow}>
+              <TouchableOpacity
+                onPress={() => setNewUserRole('MERCHANT')}
+                activeOpacity={0.8}
+                style={[
+                  styles.roleCard,
+                  isDarkMode && styles.roleCardDark,
+                  newUserRole === 'MERCHANT' && (isDarkMode ? styles.roleCardActiveDark : styles.roleCardActiveLight),
+                ]}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+                  <Ionicons
+                    name="shield-checkmark"
+                    size={16}
+                    color={newUserRole === 'MERCHANT' ? (isDarkMode ? '#5EEAD4' : '#047857') : (isDarkMode ? '#94A3B8' : '#64748B')}
+                  />
+                  <Text
+                    style={[
+                      styles.roleCardTitle,
+                      isDarkMode && styles.textWhite,
+                      newUserRole === 'MERCHANT' && (isDarkMode ? { color: '#5EEAD4' } : { color: '#047857' }),
+                    ]}
+                  >
+                    Master Admin
+                  </Text>
+                </View>
+                <Text style={[styles.roleCardDesc, isDarkMode && styles.textSubtleDark]}>
+                  Full store administration, consignment pricing, ledger & team management.
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => setNewUserRole('SELLER')}
+                activeOpacity={0.8}
+                style={[
+                  styles.roleCard,
+                  isDarkMode && styles.roleCardDark,
+                  newUserRole === 'SELLER' && (isDarkMode ? styles.roleCardActiveDark : styles.roleCardActiveLight),
+                ]}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+                  <Ionicons
+                    name="cart"
+                    size={16}
+                    color={newUserRole === 'SELLER' ? (isDarkMode ? '#5EEAD4' : '#047857') : (isDarkMode ? '#94A3B8' : '#64748B')}
+                  />
+                  <Text
+                    style={[
+                      styles.roleCardTitle,
+                      isDarkMode && styles.textWhite,
+                      newUserRole === 'SELLER' && (isDarkMode ? { color: '#5EEAD4' } : { color: '#047857' }),
+                    ]}
+                  >
+                    Sales Agent
+                  </Text>
+                </View>
+                <Text style={[styles.roleCardDesc, isDarkMode && styles.textSubtleDark]}>
+                  Bay floor sales logging, digital receipts, credit issuance & day closures.
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* Full Name */}
+          <View style={styles.clerkInputGroup}>
+            <Text style={[styles.clerkFieldLabel, isDarkMode && styles.textWhite]}>
+              FULL NAME
+            </Text>
+            <View style={[styles.clerkInputContainer, isDarkMode && styles.clerkInputContainerDark]}>
+              <Ionicons name="person-outline" size={16} color={isDarkMode ? '#7AB5BC' : '#059669'} style={styles.clerkInputIcon} />
+              <TextInput
+                style={[styles.clerkTextInput, isDarkMode && styles.textWhite]}
+                placeholder="e.g. Samuel Mwangi"
+                placeholderTextColor={isDarkMode ? '#7AB5BC' : '#94A3B8'}
+                value={newUserName}
+                onChangeText={setNewUserName}
+              />
+            </View>
+          </View>
+
+          {/* Email Address */}
+          <View style={styles.clerkInputGroup}>
+            <Text style={[styles.clerkFieldLabel, isDarkMode && styles.textWhite]}>
+              LOGIN EMAIL
+            </Text>
+            <View style={[styles.clerkInputContainer, isDarkMode && styles.clerkInputContainerDark]}>
+              <Ionicons name="mail-outline" size={16} color={isDarkMode ? '#7AB5BC' : '#059669'} style={styles.clerkInputIcon} />
+              <TextInput
+                style={[styles.clerkTextInput, isDarkMode && styles.textWhite]}
+                placeholder="e.g. samuel@wakulima.co.ke"
+                placeholderTextColor={isDarkMode ? '#7AB5BC' : '#94A3B8'}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+                value={newUserEmail}
+                onChangeText={setNewUserEmail}
+              />
+            </View>
+          </View>
+
+          {/* Password */}
+          <View style={styles.clerkInputGroup}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Text style={[styles.clerkFieldLabel, isDarkMode && styles.textWhite]}>
+                LOGIN PASSWORD
+              </Text>
+              <Text style={{ fontSize: 10, color: isDarkMode ? '#7AB5BC' : '#64748B' }}>
+                Min. 8 characters
+              </Text>
+            </View>
+            <View style={[styles.clerkInputContainer, isDarkMode && styles.clerkInputContainerDark]}>
+              <Ionicons name="lock-closed-outline" size={16} color={isDarkMode ? '#7AB5BC' : '#059669'} style={styles.clerkInputIcon} />
+              <TextInput
+                style={[styles.clerkTextInput, isDarkMode && styles.textWhite, { flex: 1 }]}
+                placeholder="Enter new account password"
+                placeholderTextColor={isDarkMode ? '#7AB5BC' : '#94A3B8'}
+                secureTextEntry={!showNewUserPassword}
+                autoCapitalize="none"
+                autoCorrect={false}
+                value={newUserPassword}
+                onChangeText={setNewUserPassword}
+              />
+              <TouchableOpacity
+                onPress={() => setShowNewUserPassword(!showNewUserPassword)}
+                style={{ padding: 6 }}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <Ionicons
+                  name={showNewUserPassword ? 'eye-off-outline' : 'eye-outline'}
+                  size={18}
+                  color={isDarkMode ? '#7AB5BC' : '#64748B'}
+                />
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* Phone Number (Optional) */}
+          <View style={styles.clerkInputGroup}>
+            <Text style={[styles.clerkFieldLabel, isDarkMode && styles.textWhite]}>
+              PHONE NUMBER (OPTIONAL / KENYA)
+            </Text>
+            <View style={[styles.clerkInputContainer, isDarkMode && styles.clerkInputContainerDark]}>
+              <Ionicons name="call-outline" size={16} color={isDarkMode ? '#7AB5BC' : '#059669'} style={styles.clerkInputIcon} />
+              <TextInput
+                style={[styles.clerkTextInput, isDarkMode && styles.textWhite]}
+                placeholder="e.g. 0712345678"
+                placeholderTextColor={isDarkMode ? '#7AB5BC' : '#94A3B8'}
+                keyboardType="phone-pad"
+                value={newUserPhone}
+                onChangeText={setNewUserPhone}
+              />
+            </View>
+          </View>
+
+          {/* Submit Button */}
+          <TouchableOpacity
+            style={[
+              styles.clerkSubmitBtn,
+              isCreatingUser && { opacity: 0.7 },
+              isDarkMode ? styles.clerkSubmitBtnDark : styles.clerkSubmitBtnLight,
+            ]}
+            onPress={handleCreateClerkUser}
+            disabled={isCreatingUser}
+            activeOpacity={0.8}
+          >
+            {isCreatingUser ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <>
+                <Ionicons name="cloud-upload-outline" size={18} color="#FFFFFF" />
+                <Text style={styles.clerkSubmitBtnText}>
+                  PROVISION USER IN CLERK
+                </Text>
+              </>
+            )}
+          </TouchableOpacity>
+        </View>
+      )}
 
       {/* 6. Accepted Modes of Payment Configuration */}
       <View style={[styles.metricCard, isDarkMode && styles.profileCardDark]}>
@@ -2732,5 +3034,148 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '800',
     color: '#FFFFFF',
+  },
+
+  // Master Clerk User Creation Styles
+  errorBannerBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FCA5A5',
+    borderRadius: 8,
+    padding: 10,
+    marginTop: 8,
+    marginBottom: 10,
+    gap: 8,
+  },
+  errorBannerBoxDark: {
+    backgroundColor: 'rgba(220, 38, 38, 0.2)',
+    borderColor: '#DC2626',
+  },
+  errorBannerText: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#B91C1C',
+  },
+  successBannerBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ECFDF5',
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+    borderRadius: 8,
+    padding: 10,
+    marginTop: 8,
+    marginBottom: 10,
+  },
+  successBannerBoxDark: {
+    backgroundColor: 'rgba(5, 150, 105, 0.2)',
+    borderColor: '#059669',
+  },
+  successBannerTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#065F46',
+  },
+  successBannerText: {
+    fontSize: 11,
+    color: '#047857',
+    marginTop: 2,
+    lineHeight: 16,
+  },
+  clerkInputGroup: {
+    marginTop: 10,
+  },
+  clerkFieldLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+    color: '#334155',
+    marginBottom: 4,
+  },
+  rolePickerRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  roleCard: {
+    flex: 1,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    borderRadius: 10,
+    padding: 10,
+  },
+  roleCardDark: {
+    backgroundColor: '#1E585E',
+    borderColor: 'rgba(122, 181, 188, 0.3)',
+  },
+  roleCardActiveLight: {
+    borderColor: '#059669',
+    backgroundColor: '#F0FDF4',
+  },
+  roleCardActiveDark: {
+    borderColor: '#5EEAD4',
+    backgroundColor: 'rgba(94, 234, 212, 0.15)',
+  },
+  roleCardTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  roleCardDesc: {
+    fontSize: 10,
+    color: '#64748B',
+    lineHeight: 14,
+  },
+  clerkInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    height: 42,
+  },
+  clerkInputContainerDark: {
+    backgroundColor: '#1E585E',
+    borderColor: 'rgba(122, 181, 188, 0.4)',
+  },
+  clerkInputIcon: {
+    marginRight: 8,
+  },
+  clerkTextInput: {
+    flex: 1,
+    fontSize: 13,
+    color: '#0F172A',
+    fontWeight: '500',
+  },
+  clerkSubmitBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    borderRadius: 10,
+    marginTop: 14,
+    gap: 8,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  },
+  clerkSubmitBtnLight: {
+    backgroundColor: '#059669',
+  },
+  clerkSubmitBtnDark: {
+    backgroundColor: '#0E7490',
+  },
+  clerkSubmitBtnText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.5,
   },
 });

@@ -580,13 +580,13 @@ const ClerkMerchantSignInForm: React.FC<{
 
       <View style={styles.inputGroup}>
         <Text style={[styles.inputLabel, isDarkMode && { color: '#E2E8F0' }]}>
-          MASTER EMAIL
+          ACCOUNT EMAIL
         </Text>
         <View style={[styles.inputContainer, isDarkMode && styles.inputContainerDark]}>
           <Ionicons name="mail" size={18} color="#0891B2" style={styles.inputIcon} />
           <TextInput
             style={[styles.inputField, isDarkMode && { color: '#F8FAFC' }]}
-            placeholder="master@yourstore.co.ke"
+            placeholder="user@yourstore.co.ke"
             placeholderTextColor={THEME.colors.textMuted}
             value={email}
             onChangeText={setEmail}
@@ -631,7 +631,7 @@ const ClerkMerchantSignInForm: React.FC<{
       >
         <Ionicons name="log-in" size={20} color="#FFFFFF" />
         <Text style={styles.merchantLoginBtnText}>
-          {submitting ? 'SIGNING IN...' : 'LOG IN AS MASTER'}
+          {submitting ? 'SIGNING IN...' : 'SIGN IN WITH CLERK'}
         </Text>
       </TouchableOpacity>
 
@@ -864,7 +864,7 @@ export const LoginScreen: React.FC = () => {
                     activeTab === 'MERCHANT' && styles.tabButtonTextActive
                   ]}
                 >
-                  Master Login
+                  Account Login
                 </Text>
               </TouchableOpacity>
 

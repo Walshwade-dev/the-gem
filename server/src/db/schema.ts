@@ -36,6 +36,8 @@ export const salespeople = pgTable(
     masterId: uuid('master_id').notNull().references(() => masters.id),
     phoneE164: text('phone_e164').notNull(),
     fullName: text('full_name').notNull(),
+    email: text('email'),
+    clerkUserId: text('clerk_user_id').unique(),
     nationalId: text('national_id'),
     passphraseHash: text('passphrase_hash'),
     status: text('status').notNull().default('INVITED'),

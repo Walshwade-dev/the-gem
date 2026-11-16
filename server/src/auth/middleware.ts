@@ -136,7 +136,7 @@ export function createAuthMiddleware(opts: {
       }
     }
 
-    // 2. Try Clerk JWT (Master)
+    // 2. Try Clerk JWT (Master or Clerk-authenticated Salesperson)
     try {
       const verified = await clerkVerifier(token);
       const [master] = await db
@@ -145,21 +145,59 @@ export function createAuthMiddleware(opts: {
         .where(eq(masters.clerkUserId, verified.clerkUserId))
         .limit(1);
 
-      if (!master) {
-        return reply.code(403).send({ error: 'Master account not synced. Call POST /auth/master/sync first.' });
-      }
-
       const nowSec = Math.floor(Date.now() / 1000);
       const authAge = verified.authTimeEpochSec ? nowSec - verified.authTimeEpochSec : undefined;
 
-      request.auth = {
-        role: 'MERCHANT',
-        actorType: 'MASTER',
-        userId: master.id,
-        masterId: master.id,
-        fullName: master.fullName,
-        clerkAuthAgeSec: authAge,
-      };
+      if (master) {
+        request.auth = {
+          role: 'MERCHANT',
+          actorType: 'MASTER',
+          userId: master.id,
+          masterId: master.id,
+          fullName: master.fullName,
+          clerkAuthAgeSec: authAge,
+        };
+        return;
+      }
+
+      const [seller] = await db
+        .select()
+        .from(salespeople)
+        .where(eq(salespeople.clerkUserId, verified.clerkUserId))
+        .limit(1);
+
+      if (seller) {
+        if (seller.status !== 'ACTIVE') {
+          return reply.code(403).send({ error: 'Salesperson account is not ACTIVE' });
+        }
+
+        const [lockdown] = await db
+          .select()
+          .from(securityLockdowns)
+          .where(
+            and(
+              eq(securityLockdowns.masterId, seller.masterId),
+              eq(securityLockdowns.isActive, true)
+            )
+          )
+          .limit(1);
+
+        if (lockdown) {
+          return reply.code(403).send({ error: 'Store is currently in security lockdown' });
+        }
+
+        request.auth = {
+          role: 'SELLER',
+          actorType: 'SELLER',
+          userId: seller.id,
+          masterId: seller.masterId,
+          fullName: seller.fullName,
+          clerkAuthAgeSec: authAge,
+        };
+        return;
+      }
+
+      return reply.code(403).send({ error: 'Account not synced. Call POST /auth/master/sync first.' });
     } catch {
       return reply.code(401).send({ error: 'Invalid or expired authentication token' });
     }

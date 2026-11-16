@@ -101,6 +101,17 @@ export interface AppState {
     fullName?: string;
     storeName?: string;
   }) => Promise<{ success: boolean; message: string }>;
+  createClerkUser: (params: {
+    email: string;
+    password: string;
+    fullName: string;
+    role: 'MERCHANT' | 'SELLER';
+    phoneE164?: string;
+  }) => Promise<{
+    success: boolean;
+    message: string;
+    user?: { id: string; email: string; fullName: string; role: 'MERCHANT' | 'SELLER' };
+  }>;
   restoreSellerSession: () => Promise<boolean>;
   requestSellerOtp: (
     phone: string,
@@ -500,6 +511,33 @@ export const useAppStore = create<AppState>()(
           return {
             success: false,
             message: err instanceof Error ? err.message : 'Master sync failed',
+          };
+        }
+      },
+
+      createClerkUser: async (params) => {
+        try {
+          const res = await apiFetch<{
+            success: boolean;
+            message: string;
+            user?: { id: string; email: string; fullName: string; role: 'MERCHANT' | 'SELLER' };
+          }>('/auth/clerk/create-user', {
+            method: 'POST',
+            body: params,
+          });
+          void get().syncFromServer();
+          return {
+            success: true,
+            message: res.message || 'User credentials successfully created in Clerk.',
+            user: res.user,
+          };
+        } catch (err) {
+          return {
+            success: false,
+            message:
+              err instanceof Error
+                ? err.message
+                : 'Failed to create user in Clerk. Please check details and try again.',
           };
         }
       },
