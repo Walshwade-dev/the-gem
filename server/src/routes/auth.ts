@@ -15,9 +15,11 @@ import {
   securityLockdowns,
   sessions,
   shrinkageConfig,
+  smsOutbox,
   stockAssignments,
   termsAcceptances,
 } from '../db/schema.js';
+import { SimGatewaySmsProvider } from '../providers/sms.js';
 import {
   generateRandomToken,
   generateSixDigitOtp,
@@ -255,10 +257,19 @@ export async function registerAuthRoutes(app: FastifyInstance, deps: AppRouteDep
       maxAttempts: 5,
     });
 
-    await smsProvider.send(
-      phoneE164,
-      `Your Onion Store verification code is ${code}. Expires in 5 minutes.`
-    );
+    const otpMsg = `THE GEM — SELLER LOGIN CODE\nYour one-time login code is: ${code}\nExpires in 5 minutes.`;
+    if (smsProvider instanceof SimGatewaySmsProvider) {
+      await db.insert(smsOutbox).values({
+        masterId: seller.masterId,
+        toPhoneE164: phoneE164,
+        template: 'SELLER_OTP_LOGIN',
+        payload: { purpose: parsed.data.purpose },
+        bodyText: otpMsg,
+        status: 'QUEUED',
+      });
+    } else {
+      await smsProvider.send(phoneE164, otpMsg);
+    }
 
     return reply.send({ ok: true, message: 'If eligible, an OTP has been sent.' });
   });
@@ -307,6 +318,20 @@ export async function registerAuthRoutes(app: FastifyInstance, deps: AppRouteDep
         expiresAt,
         maxAttempts: 5,
       });
+
+      const inviteMsg = `THE GEM — SELLER INVITE CODE\nHello ${seller.fullName}, your one-time login code is: ${code}\nValid for 24 hours.`;
+      if (smsProvider instanceof SimGatewaySmsProvider) {
+        await db.insert(smsOutbox).values({
+          masterId,
+          toPhoneE164: phoneE164,
+          template: 'SELLER_INVITE_CODE',
+          payload: { sellerId: seller.id, sellerName: seller.fullName },
+          bodyText: inviteMsg,
+          status: 'QUEUED',
+        });
+      } else {
+        await smsProvider.send(phoneE164, inviteMsg);
+      }
 
       await writeAuditEvent(db, {
         masterId,

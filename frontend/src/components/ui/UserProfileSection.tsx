@@ -15,12 +15,20 @@ import {
   TextInput,
   Alert,
   Modal,
+  PermissionsAndroid,
+  Platform,
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { THEME } from '../../constants/theme';
 import { confirmAndRevokeAssignment } from '../../utils/revokeAssignmentPrompt';
 import { useAppStore } from '../../store/useAppStore';
 import { CustomerCredit, CreditEntry } from '../../types';
+import {
+  ensureSimSmsPermissions,
+  listActiveSims,
+  sendDirectSimSms,
+  SimSlotInfo,
+} from '../../hooks/useSimSmsGateway';
 
 interface UserProfileSectionProps {
   onOpenCreditLedger: () => void;
@@ -58,7 +66,33 @@ export const UserProfileSection: React.FC<UserProfileSectionProps> = ({
     acceptedPaymentModes,
     togglePaymentMode,
     revokeSellerAssignment,
+    simSmsGatewayEnabled,
+    simSmsSentCount,
+    selectedSimSubId,
+    pochiPhoneNumber,
+    masterPhoneNumber,
+    setSimSmsGatewayEnabled,
+    setSelectedSimSubId,
+    setPochiPhoneNumber,
+    setMasterPhoneNumber,
+    incrementSimSmsSent,
   } = useAppStore();
+
+  const [activeSims, setActiveSims] = useState<SimSlotInfo[]>([]);
+  const [testSmsPhone, setTestSmsPhone] = useState('');
+  const [sendingTestSms, setSendingTestSms] = useState(false);
+
+  useEffect(() => {
+    if (Platform.OS === 'android' && simSmsGatewayEnabled) {
+      void listActiveSims().then((sims) => {
+        setActiveSims(sims);
+        if (selectedSimSubId === null && sims.length > 0) {
+          const def = sims.find((s) => s.isDefaultSmsSim) ?? sims[0];
+          setSelectedSimSubId(def.subscriptionId);
+        }
+      });
+    }
+  }, [simSmsGatewayEnabled, selectedSimSubId, setSelectedSimSubId]);
 
   const paymentModes = acceptedPaymentModes || { CASH: true, MPESA: true, CREDIT: true };
   const handleTogglePaymentMode = (mode: 'MPESA' | 'CASH' | 'CREDIT') => {
@@ -281,21 +315,13 @@ export const UserProfileSection: React.FC<UserProfileSectionProps> = ({
           </View>
 
           <View style={styles.profileDetails}>
-            <View style={styles.roleRow}>
-              <View
-                style={[
-                  styles.roleBadge,
-                  role === 'MERCHANT' ? styles.roleMerchant : styles.roleSeller,
-                ]}
-              >
-                <Text style={styles.roleBadgeText}>
-                  {role === 'MERCHANT' ? 'MASTER ADMIN' : 'SALES AGENT'}
-                </Text>
+            {role !== 'MERCHANT' && (
+              <View style={styles.roleRow}>
+                <View style={[styles.roleBadge, styles.roleSeller]}>
+                  <Text style={styles.roleBadgeText}>SALES AGENT</Text>
+                </View>
               </View>
-              <Text style={[styles.locationPill, isDarkMode && styles.textSubtleDark]}>
-                Wakulima Market
-              </Text>
-            </View>
+            )}
 
             {/* If Master, show Store Name + Admin Name */}
             {role === 'MERCHANT' ? (
@@ -916,6 +942,225 @@ export const UserProfileSection: React.FC<UserProfileSectionProps> = ({
         </View>
       )}
 
+      {/* 3b. Self-Hosted Android SIM SMS Setup (Master & Seller Android) */}
+      {Platform.OS === 'android' && (
+        <View style={[styles.metricCard, isDarkMode && styles.profileCardDark]}>
+          <View style={styles.cardHeaderRow}>
+            <View style={{ flex: 1, paddingRight: 10 }}>
+              <Text style={[styles.cardTitle, isDarkMode && styles.textWhite]}>
+                SIM SMS SETUP (THIS PHONE)
+              </Text>
+              <Text style={[styles.sellerPhone, isDarkMode && styles.textSubtleDark, { marginTop: 2 }]}>
+                {role === 'MERCHANT'
+                  ? 'Send payment details, purchase receipts, credit agreements, and OTPs directly from your SIM (KES 0 API fee).'
+                  : 'Use your phone SIM to send customer receipts, credit agreements, and final Day Closure SMS to Master.'}
+                {simSmsSentCount > 0 ? ` Sent this session: ${simSmsSentCount}` : ''}
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={async () => {
+                if (simSmsGatewayEnabled) {
+                  setSimSmsGatewayEnabled(false);
+                  return;
+                }
+                const granted = await ensureSimSmsPermissions();
+                if (granted) {
+                  setSimSmsGatewayEnabled(true);
+                  const sims = await listActiveSims();
+                  setActiveSims(sims);
+                  if (sims.length > 0 && selectedSimSubId === null) {
+                    const def = sims.find((s) => s.isDefaultSmsSim) ?? sims[0];
+                    setSelectedSimSubId(def.subscriptionId);
+                  }
+                  Alert.alert('SIM SMS Gateway Active', 'Queued & Pochi SMS will be sent using your attached SIM.');
+                } else {
+                  Alert.alert('Permission Required', 'Grant SEND_SMS and Phone permissions to enable the SIM SMS Gateway.');
+                }
+              }}
+              activeOpacity={0.85}
+              style={{
+                backgroundColor: simSmsGatewayEnabled ? '#10B981' : (isDarkMode ? '#1B4F55' : '#E2E8F0'),
+                paddingHorizontal: 12,
+                paddingVertical: 7,
+                borderRadius: 10,
+              }}
+            >
+              <Text
+                style={{
+                  fontSize: 11,
+                  fontWeight: '800',
+                  color: simSmsGatewayEnabled ? '#FFFFFF' : (isDarkMode ? '#CFE9EC' : '#334155'),
+                }}
+              >
+                {simSmsGatewayEnabled ? 'ACTIVE' : 'ENABLE'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {simSmsGatewayEnabled && (
+            <View style={{ marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: isDarkMode ? '#1B4F55' : '#E2E8F0', gap: 10 }}>
+              <View style={{ gap: 4 }}>
+                <Text style={{ fontSize: 11, fontWeight: '800', color: isDarkMode ? '#5EEAD4' : '#0F766E' }}>
+                  1. CHOOSE THE SIM YOU WANT TO USE TO SEND SMS
+                </Text>
+                <Text style={{ fontSize: 11, color: isDarkMode ? '#9AC7CC' : '#64748B' }}>
+                  Tap a SIM card below to attach it for all outgoing SMS from this phone.
+                </Text>
+                {activeSims.length > 0 ? (
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 2 }}>
+                    {activeSims.map((sim) => {
+                      const active = selectedSimSubId === sim.subscriptionId || (selectedSimSubId === null && sim.isDefaultSmsSim);
+                      return (
+                        <TouchableOpacity
+                          key={sim.subscriptionId}
+                          onPress={() => setSelectedSimSubId(sim.subscriptionId)}
+                          style={{
+                            paddingHorizontal: 10,
+                            paddingVertical: 7,
+                            borderRadius: 8,
+                            borderWidth: 1,
+                            borderColor: active ? '#0D9488' : (isDarkMode ? '#1B4F55' : '#CBD5E1'),
+                            backgroundColor: active ? '#0D9488' : (isDarkMode ? '#12383D' : '#F1F5F9'),
+                          }}
+                        >
+                          <Text style={{ fontSize: 11, fontWeight: '800', color: active ? '#FFFFFF' : (isDarkMode ? '#CFE9EC' : '#334155') }}>
+                            SIM {sim.slotIndex + 1}: {sim.carrierName}
+                            {sim.phoneNumber ? ` (${sim.phoneNumber})` : ''}
+                            {active ? ' • SELECTED' : ''}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                ) : (
+                  <Text style={{ fontSize: 11, color: isDarkMode ? '#CFE9EC' : '#475569' }}>
+                    Using phone&apos;s default SIM (grant Phone permission if dual-SIM slots do not appear).
+                  </Text>
+                )}
+              </View>
+
+              <View style={{ gap: 4 }}>
+                <Text style={{ fontSize: 11, fontWeight: '800', color: isDarkMode ? '#5EEAD4' : '#0F766E' }}>
+                  2. PAYMENT RECEIVING NUMBER (POCHI / M-PESA)
+                </Text>
+                <Text style={{ fontSize: 11, color: isDarkMode ? '#9AC7CC' : '#64748B' }}>
+                  Which number customer payments are made to (included in payment SMS).
+                </Text>
+                <TextInput
+                  key="sim-pochi-input"
+                  value={pochiPhoneNumber}
+                  onChangeText={setPochiPhoneNumber}
+                  keyboardType="phone-pad"
+                  autoComplete="off"
+                  importantForAutofill="no"
+                  placeholder="0115148000"
+                  placeholderTextColor={isDarkMode ? '#64748B' : '#94A3B8'}
+                  style={{
+                    fontSize: 13,
+                    fontWeight: '700',
+                    color: isDarkMode ? '#FFFFFF' : '#0F172A',
+                    backgroundColor: isDarkMode ? '#12383D' : '#F8FAFC',
+                    borderRadius: 8,
+                    paddingHorizontal: 10,
+                    paddingVertical: 7,
+                  }}
+                />
+              </View>
+
+              <View style={{ gap: 4 }}>
+                <Text style={{ fontSize: 11, fontWeight: '800', color: isDarkMode ? '#5EEAD4' : '#0F766E' }}>
+                  3. MASTER&apos;S PHONE NUMBER (FOR DAY CLOSURE SMS)
+                </Text>
+                <Text style={{ fontSize: 11, color: isDarkMode ? '#9AC7CC' : '#64748B' }}>
+                  Final Day Closure receipt SMS will be sent to this Master phone number.
+                </Text>
+                <TextInput
+                  key="sim-master-input"
+                  value={masterPhoneNumber}
+                  onChangeText={setMasterPhoneNumber}
+                  keyboardType="phone-pad"
+                  autoComplete="off"
+                  importantForAutofill="no"
+                  placeholder={role === 'MERCHANT' && currentUserPhone ? currentUserPhone : 'e.g. 0712345678'}
+                  placeholderTextColor={isDarkMode ? '#64748B' : '#94A3B8'}
+                  style={{
+                    fontSize: 13,
+                    fontWeight: '700',
+                    color: isDarkMode ? '#FFFFFF' : '#0F172A',
+                    backgroundColor: isDarkMode ? '#12383D' : '#F8FAFC',
+                    borderRadius: 8,
+                    paddingHorizontal: 10,
+                    paddingVertical: 7,
+                  }}
+                />
+              </View>
+
+              <View style={{ gap: 4 }}>
+                <Text style={{ fontSize: 11, fontWeight: '800', color: isDarkMode ? '#5EEAD4' : '#0F766E' }}>
+                  4. TEST ATTACHED SIM
+                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <TextInput
+                    key="sim-test-input"
+                    value={testSmsPhone}
+                    onChangeText={setTestSmsPhone}
+                    keyboardType="phone-pad"
+                    autoComplete="off"
+                    importantForAutofill="no"
+                    placeholder="Test phone (e.g. 0712345678)"
+                    placeholderTextColor={isDarkMode ? '#64748B' : '#94A3B8'}
+                    style={{
+                      flex: 1,
+                      fontSize: 12,
+                      color: isDarkMode ? '#FFFFFF' : '#0F172A',
+                      backgroundColor: isDarkMode ? '#12383D' : '#F8FAFC',
+                      borderRadius: 8,
+                      paddingHorizontal: 10,
+                      paddingVertical: 7,
+                    }}
+                  />
+                  <TouchableOpacity
+                    disabled={sendingTestSms}
+                    onPress={async () => {
+                      const target = testSmsPhone.trim();
+                      if (target.replace(/\D/g, '').length < 9) {
+                        Alert.alert('Phone Required', 'Enter a valid phone number to send a test SMS.');
+                        return;
+                      }
+                      setSendingTestSms(true);
+                      try {
+                        await sendDirectSimSms(
+                          target,
+                          `Hello from The Gem! Make your payment via ${pochiPhoneNumber || '0115148000'} using Pochi la Biashara.`,
+                          selectedSimSubId
+                        );
+                        incrementSimSmsSent();
+                        Alert.alert('Test SMS Sent', `Dispatched directly from attached SIM to ${target}.`);
+                      } catch (err) {
+                        Alert.alert('SIM Send Failed', err instanceof Error ? err.message : 'Failed to send SMS');
+                      } finally {
+                        setSendingTestSms(false);
+                      }
+                    }}
+                    style={{
+                      backgroundColor: '#0284C7',
+                      paddingHorizontal: 12,
+                      paddingVertical: 8,
+                      borderRadius: 8,
+                      opacity: sendingTestSms ? 0.6 : 1,
+                    }}
+                  >
+                    <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '800' }}>
+                      {sendingTestSms ? 'SENDING...' : 'TEST SMS'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          )}
+        </View>
+      )}
+
       {/* 4. Seller Team & Quota Delegation (Master view) */}
       {role === 'MERCHANT' && (
         <View style={[styles.metricCard, isDarkMode && styles.profileCardDark]}>
@@ -1309,12 +1554,12 @@ const styles = StyleSheet.create({
   },
   profileHeaderRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 12,
+    alignItems: 'center',
+    gap: 14,
   },
   avatarWrapper: {
-    width: 60,
-    height: 60,
+    width: '25%',
+    aspectRatio: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },

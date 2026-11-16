@@ -1,3 +1,4 @@
+import './src/utils/setupTextZoom';
 import { registerRootComponent } from 'expo';
 
 import App from './App';

@@ -1,3 +1,4 @@
+import { Appearance } from 'react-native';
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -35,6 +36,20 @@ export interface AppState {
   isAuthenticated: boolean;
   isSyncing: boolean;
   lastSyncError?: string;
+  simSmsGatewayEnabled: boolean;
+  simSmsSentCount: number;
+  selectedSimSubId: number | null;
+  pochiPhoneNumber: string;
+  masterPhoneNumber: string;
+  uiTextScale: number;
+  sentCreditReminderKeys: Record<string, string>;
+  setSimSmsGatewayEnabled: (enabled: boolean) => void;
+  setSelectedSimSubId: (subId: number | null) => void;
+  setPochiPhoneNumber: (phone: string) => void;
+  setMasterPhoneNumber: (phone: string) => void;
+  setUiTextScale: (scale: number) => void;
+  markCreditReminderSent: (recordId: string, ymd: string) => void;
+  incrementSimSmsSent: () => void;
 
   // Security & Emergency Lockdown
   isLockedDown: boolean;
@@ -63,7 +78,9 @@ export interface AppState {
 
   // App Settings
   isDarkMode: boolean;
+  hasManualThemeOverride: boolean;
   toggleTheme: () => void;
+  syncSystemTheme: (scheme: 'light' | 'dark' | null | undefined) => void;
   isPrivacyMode: boolean;
   togglePrivacyMode: () => void;
   acceptedPaymentModes: Record<PaymentMethod, boolean>;
@@ -344,6 +361,24 @@ export const useAppStore = create<AppState>()(
       currentUserNationalId: '',
       isAuthenticated: false,
       isSyncing: false,
+      simSmsGatewayEnabled: false,
+      simSmsSentCount: 0,
+      selectedSimSubId: null,
+      pochiPhoneNumber: '0115148000',
+      masterPhoneNumber: '',
+      uiTextScale: 1,
+      sentCreditReminderKeys: {},
+      setSimSmsGatewayEnabled: (enabled) => set({ simSmsGatewayEnabled: enabled }),
+      setSelectedSimSubId: (subId) => set({ selectedSimSubId: subId }),
+      setPochiPhoneNumber: (phone) => set({ pochiPhoneNumber: phone }),
+      setMasterPhoneNumber: (phone) => set({ masterPhoneNumber: phone }),
+      setUiTextScale: (scale) =>
+        set({ uiTextScale: Math.min(1.4, Math.max(0.85, Math.round(scale * 100) / 100)) }),
+      markCreditReminderSent: (recordId, ymd) =>
+        set((s) => ({
+          sentCreditReminderKeys: { ...s.sentCreditReminderKeys, [recordId]: ymd },
+        })),
+      incrementSimSmsSent: () => set((s) => ({ simSmsSentCount: s.simSmsSentCount + 1 })),
 
       isLockedDown: false,
       selectedBatchId: null,
@@ -361,8 +396,14 @@ export const useAppStore = create<AppState>()(
       activityLogs: [],
       stockDiscrepancyAlerts: [],
 
-      isDarkMode: false,
-      toggleTheme: () => set((s) => ({ isDarkMode: !s.isDarkMode })),
+      isDarkMode: Appearance.getColorScheme() === 'dark',
+      hasManualThemeOverride: false,
+      toggleTheme: () =>
+        set((s) => ({ isDarkMode: !s.isDarkMode, hasManualThemeOverride: true })),
+      syncSystemTheme: (scheme) =>
+        set((s) =>
+          s.hasManualThemeOverride ? s : { isDarkMode: scheme === 'dark' }
+        ),
       isPrivacyMode: false,
       togglePrivacyMode: () => set((s) => ({ isPrivacyMode: !s.isPrivacyMode })),
       acceptedPaymentModes: { CASH: true, MPESA: true, CREDIT: true },
@@ -1204,8 +1245,15 @@ export const useAppStore = create<AppState>()(
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => ({
         isDarkMode: state.isDarkMode,
+        hasManualThemeOverride: state.hasManualThemeOverride,
         isPrivacyMode: state.isPrivacyMode,
         selectedBatchId: state.selectedBatchId,
+        simSmsGatewayEnabled: state.simSmsGatewayEnabled,
+        selectedSimSubId: state.selectedSimSubId,
+        pochiPhoneNumber: state.pochiPhoneNumber,
+        masterPhoneNumber: state.masterPhoneNumber,
+        uiTextScale: state.uiTextScale,
+        sentCreditReminderKeys: state.sentCreditReminderKeys,
       }),
     }
   )

@@ -58,7 +58,16 @@ export class AfricasTalkingSmsProvider implements SmsProvider {
   }
 }
 
+export class SimGatewaySmsProvider implements SmsProvider {
+  async send(): Promise<SmsSendResult> {
+    return { success: false, error: 'Handled by Master Android SIM Gateway' };
+  }
+}
+
 export async function processSmsOutbox(db: AppDb, provider: SmsProvider) {
+  if (provider instanceof SimGatewaySmsProvider) {
+    return;
+  }
   const queued = await db
     .select()
     .from(smsOutbox)

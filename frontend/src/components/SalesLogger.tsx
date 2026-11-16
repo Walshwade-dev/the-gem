@@ -27,6 +27,12 @@ import { useShallow } from 'zustand/react/shallow';
 import { useAppStore } from '../store/useAppStore';
 import { MARKET_CONFIG } from '../constants/config';
 import { apiFetch, getApiBaseUrl } from '../services/api';
+import { normalizeKenyaE164, sendDirectSimSms } from '../hooks/useSimSmsGateway';
+import {
+  buildCreditAgreementSms,
+  buildPochiPaymentSms,
+  buildThankYouReceiptSms,
+} from '../utils/smsTemplates';
 
 export const SalesLogger: React.FC = () => {
   const { 
@@ -41,6 +47,10 @@ export const SalesLogger: React.FC = () => {
     customerCredits,
     isDarkMode,
     acceptedPaymentModes,
+    pochiPhoneNumber,
+    selectedSimSubId,
+    simSmsGatewayEnabled,
+    incrementSimSmsSent,
   } = useAppStore(
     useShallow((s) => ({
       currentBatch: s.currentBatch,
@@ -54,6 +64,10 @@ export const SalesLogger: React.FC = () => {
       customerCredits: s.customerCredits,
       isDarkMode: s.isDarkMode,
       acceptedPaymentModes: s.acceptedPaymentModes,
+      pochiPhoneNumber: s.pochiPhoneNumber,
+      selectedSimSubId: s.selectedSimSubId,
+      simSmsGatewayEnabled: s.simSmsGatewayEnabled,
+      incrementSimSmsSent: s.incrementSimSmsSent,
     }))
   );
 
@@ -205,6 +219,58 @@ export const SalesLogger: React.FC = () => {
     };
   }, [stkState.status, stkState.requestId]);
 
+  const [sendingPochiSms, setSendingPochiSms] = useState(false);
+
+  const handleSendPochiSms = async () => {
+    const cleanPhone = buyerPhone.trim();
+    if (cleanPhone.replace(/\D/g, '').length < 9) {
+      Alert.alert('Customer Phone Needed', 'Enter the customer phone number first.');
+      return;
+    }
+    const qty = quantity || 0;
+    const price = parseFloat(unitPrice) || 0;
+    const amountKsh = Math.round(qty * price);
+    if (amountKsh <= 0) {
+      Alert.alert('Invalid Amount', 'Enter quantity and unit price before sending Pochi payment details.');
+      return;
+    }
+
+    const pochiNum = (pochiPhoneNumber || '0115148000').trim();
+    const itemDesc = `${qty}x ${selectedGrade === 'GRADE_1' ? 'Grade 1' : 'Grade 2'}${
+      currentBatch?.truckPlate ? ` (${currentBatch.truckPlate})` : ''
+    }`;
+    const smsBody = buildPochiPaymentSms({
+      pochiNumber: pochiNum,
+      amountKsh,
+      itemDesc,
+      buyerName: buyerName.trim() || undefined,
+    });
+
+    setSendingPochiSms(true);
+    try {
+      const e164 = normalizeKenyaE164(cleanPhone);
+      if (Platform.OS === 'android' && role === 'MERCHANT') {
+        await sendDirectSimSms(e164, smsBody, selectedSimSubId);
+        incrementSimSmsSent();
+        Alert.alert('Pochi SMS Sent', `Sent Pochi (${pochiNum}) details for KES ${amountKsh.toLocaleString()} to ${e164} via SIM.`);
+      } else {
+        await apiFetch('/sms-gateway/send', {
+          method: 'POST',
+          body: {
+            toPhoneE164: e164,
+            bodyText: smsBody,
+            template: 'POCHI_PAYMENT_DETAILS',
+          },
+        });
+        Alert.alert('Pochi SMS Queued', `Queued Pochi (${pochiNum}) details for ${e164} on Master's SIM Gateway.`);
+      }
+    } catch (err) {
+      Alert.alert('Pochi SMS Failed', err instanceof Error ? err.message : 'Could not send Pochi SMS');
+    } finally {
+      setSendingPochiSms(false);
+    }
+  };
+
   const handleSendStkPush = async () => {
     const cleanPhone = buyerPhone.trim();
     if (cleanPhone.replace(/\D/g, '').length < 9) {
@@ -352,6 +418,36 @@ export const SalesLogger: React.FC = () => {
   const [guarantorNationalId, setGuarantorNationalId] = useState<string>('24918230');
   const [guarantorConsentChecked, setGuarantorConsentChecked] = useState<boolean>(false);
 
+  // Auto-detect debtor "YES" SMS reply and automatically sign off credit acknowledgement
+  useEffect(() => {
+    if (paymentMethod !== 'CREDIT' || !smsSent || buyerAgreed) return;
+
+    if (Platform.OS === 'android') {
+      NativeModules.MpesaSmsModule?.startListening?.();
+    }
+
+    const sub = DeviceEventEmitter.addListener(
+      'onCreditReplySmsReceived',
+      (payload: { sender?: string; body?: string }) => {
+        const senderDigits = (payload?.sender || '').replace(/\D/g, '').slice(-9);
+        const buyerDigits = buyerPhone.replace(/\D/g, '').slice(-9);
+        const matchesBuyer =
+          buyerDigits.length >= 9 && senderDigits.length >= 9 && senderDigits === buyerDigits;
+        if (matchesBuyer || !buyerDigits) {
+          setBuyerAgreed(true);
+          Alert.alert(
+            '✅ Debtor "YES" Reply Collected',
+            `${buyerName.trim() || 'Debtor'} (${payload?.sender || buyerPhone}) replied "${(payload?.body || 'YES').trim()}".\n\nCredit acknowledgement automatically signed off!`
+          );
+        }
+      }
+    );
+
+    return () => {
+      sub.remove();
+    };
+  }, [paymentMethod, smsSent, buyerAgreed, buyerPhone, buyerName]);
+
   if (!currentBatch || !batchProducts || batchProducts.length === 0) return null;
 
   const numericPrice = parseFloat(unitPrice) || 0;
@@ -398,7 +494,7 @@ export const SalesLogger: React.FC = () => {
     setUnitPrice(next.toString());
   };
 
-  const handleSendCreditAgreementSms = () => {
+  const handleSendCreditAgreementSms = async () => {
     if (!buyerName.trim()) {
       Alert.alert('Customer Name Required', 'Please enter the debtor name before sending credit agreement SMS.');
       return;
@@ -413,15 +509,45 @@ export const SalesLogger: React.FC = () => {
     }
 
     const gradeLabel = selectedGrade === 'GRADE_1' ? 'Grade 1' : 'Grade 2';
-    const truck = currentBatch.truckPlate;
-    const smsMessage = `THE GEM / WAKULIMA MARKET: Credit liability notice for ${buyerName.trim()} (ID: ${buyerNationalId.trim()}). You are receiving ${quantity} nets of ${gradeLabel} on credit totaling KSH ${totalAmount.toLocaleString()} from Truck ${truck}. You are legally liable for this debt. Repayment will be tracked in the market ledger. Reply YES to accept liability and confirm sale.`;
+    const truck = currentBatch?.truckPlate || 'N/A';
+    const smsMessage = buildCreditAgreementSms({
+      buyerName: buyerName.trim(),
+      nationalId: buyerNationalId.trim(),
+      quantity,
+      gradeLabel,
+      totalAmount,
+      truckPlate: truck,
+    });
+
+    if (Platform.OS === 'android') {
+      try {
+        const perm = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.RECEIVE_SMS);
+        if (perm === PermissionsAndroid.RESULTS.GRANTED) {
+          NativeModules.MpesaSmsModule?.startListening?.();
+        }
+      } catch {
+        // Ignore
+      }
+    }
+
+    let sentViaSim = false;
+    if (Platform.OS === 'android' && simSmsGatewayEnabled) {
+      try {
+        const e164 = normalizeKenyaE164(buyerPhone.trim());
+        await sendDirectSimSms(e164, smsMessage, selectedSimSubId);
+        incrementSimSmsSent();
+        sentViaSim = true;
+      } catch {
+        sentViaSim = false;
+      }
+    }
 
     setSmsSent(true);
     setBuyerAgreed(false);
 
     Alert.alert(
-      '📲 Credit Agreement SMS Dispatched',
-      `Sent to ${buyerPhone.trim()} (ID: ${buyerNationalId.trim()}):\n\n"${smsMessage}"\n\nAwaiting debtor confirmation. You can simulate the "YES" reply below to complete this transaction.`
+      sentViaSim ? '📲 Credit Agreement SMS Sent via SIM' : '📲 Credit Agreement SMS Queued',
+      `To ${buyerPhone.trim()} (ID: ${buyerNationalId.trim()}):\n\n"${smsMessage}"\n\nListening automatically for the debtor's "YES" reply to sign off.`
     );
   };
 
@@ -572,14 +698,40 @@ export const SalesLogger: React.FC = () => {
       });
 
       if (res.success) {
+      const gradeText = selectedGrade === 'GRADE_1' ? 'Grade 1' : 'Grade 2';
+      const cleanBuyerPhone = buyerPhone.trim();
+      const canAutoSendReceipt =
+        Platform.OS === 'android' &&
+        simSmsGatewayEnabled &&
+        cleanBuyerPhone.replace(/\D/g, '').length >= 9 &&
+        (paymentMethod === 'MPESA' || paymentMethod === 'CASH');
+
+      if (canAutoSendReceipt) {
+        const thankYouSms = buildThankYouReceiptSms({
+          buyerName: buyerName.trim() || undefined,
+          itemDesc: `${quantity} nets of ${gradeText}`,
+          amountKsh: totalAmount,
+          paymentMethod,
+          mpesaCode: normalizedMpesaCode || undefined,
+        });
+        void sendDirectSimSms(normalizeKenyaE164(cleanBuyerPhone), thankYouSms, selectedSimSubId)
+          .then(() => incrementSimSmsSent())
+          .catch(() => undefined);
+      }
+
       if (paymentMethod === 'MPESA') {
         const customerName = buyerName.trim() || 'Customer';
-        const gradeText = selectedGrade === 'GRADE_1' ? 'Grade 1' : 'Grade 2';
-        const confirmationSms = `Confirmed. Ksh ${totalAmount.toLocaleString()} received for ${quantity} nets of ${gradeText}. Thank you ${customerName} for purchasing from The Gem (Wakulima Market). Karibu tena!`;
+        const confirmationSms = buildThankYouReceiptSms({
+          buyerName: customerName,
+          itemDesc: `${quantity} nets of ${gradeText}`,
+          amountKsh: totalAmount,
+          paymentMethod: 'M-Pesa',
+          mpesaCode: normalizedMpesaCode,
+        });
 
         Alert.alert(
           '✅ M-Pesa Payment Received',
-          `Funds credited directly to Master Account.\nTotal: Ksh ${totalAmount.toLocaleString()}\n\n📲 Confirmation & Thank-You SMS sent to buyer (${buyerPhone || 'Customer'}):\n"${confirmationSms}"`,
+          `Funds credited directly to Master Account.\nTotal: Ksh ${totalAmount.toLocaleString()}\n\n📲 Official Thank-You Receipt ${canAutoSendReceipt ? 'sent via SIM' : 'ready'} (${buyerPhone || 'Customer'}):\n"${confirmationSms}"`,
           [{ text: 'OK' }]
         );
       } else if (paymentMethod === 'CREDIT') {
@@ -980,6 +1132,34 @@ export const SalesLogger: React.FC = () => {
                   : stkState.status === 'WAITING'
                     ? 'WAITING FOR CUSTOMER PIN...'
                     : 'SEND M-PESA STK PROMPT'}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={handleSendPochiSms}
+              disabled={sendingPochiSms}
+              activeOpacity={0.85}
+              style={{
+                marginTop: 6,
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+                backgroundColor: '#0284C7',
+                borderRadius: 10,
+                paddingVertical: 10,
+                paddingHorizontal: 12,
+                opacity: sendingPochiSms ? 0.7 : 1,
+              }}
+            >
+              {sendingPochiSms ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <Ionicons name="chatbubble-ellipses-outline" size={16} color="#FFFFFF" />
+              )}
+              <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '800', letterSpacing: 0.4 }}>
+                {sendingPochiSms
+                  ? 'SENDING POCHI DETAILS...'
+                  : `SEND POCHI DETAILS SMS (${pochiPhoneNumber || '0115148000'})`}
               </Text>
             </TouchableOpacity>
             {stkState.status !== 'IDLE' && stkState.message && (

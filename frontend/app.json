@@ -1,12 +1,17 @@
 {
   "expo": {
-    "name": "the-gem",
+    "name": "The Gem",
     "slug": "the-gem",
     "scheme": "thegem",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "image": "./assets/faceted-onion-transparent.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#F0FDFA"
+    },
     "ios": {
       "supportsTablet": true
     },
@@ -26,7 +31,21 @@
     },
     "plugins": [
       "expo-web-browser",
-      "./plugins/withMpesaSmsListener"
+      "./plugins/withMpesaSmsListener",
+      "./plugins/withSimSmsGateway",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/faceted-onion-transparent.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#F0FDFA",
+          "dark": {
+            "image": "./assets/faceted-onion-transparent.png",
+            "backgroundColor": "#1D575D"
+          }
+        }
+      ]
     ]
   }
 }

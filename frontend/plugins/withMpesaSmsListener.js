@@ -43,6 +43,7 @@ class MpesaSmsModule(private val reactContext: ReactApplicationContext) :
                     fullBody.append(sms.messageBody ?: "")
                 }
                 val bodyStr = fullBody.toString()
+                val trimmedUpper = bodyStr.trim().uppercase()
                 if (sender.contains("MPESA", ignoreCase = true) ||
                     (bodyStr.contains("Confirmed", ignoreCase = true) &&
                         bodyStr.contains("Ksh", ignoreCase = true))
@@ -55,6 +56,21 @@ class MpesaSmsModule(private val reactContext: ReactApplicationContext) :
                         reactContext
                             .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
                             .emit("onMpesaSmsReceived", params)
+                    }
+                }
+                if (trimmedUpper == "YES" ||
+                    trimmedUpper.startsWith("YES ") ||
+                    trimmedUpper.startsWith("YES,") ||
+                    trimmedUpper == "NDIO"
+                ) {
+                    val params = Arguments.createMap().apply {
+                        putString("sender", sender)
+                        putString("body", bodyStr)
+                    }
+                    if (reactContext.hasActiveReactInstance()) {
+                        reactContext
+                            .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+                            .emit("onCreditReplySmsReceived", params)
                     }
                 }
             }

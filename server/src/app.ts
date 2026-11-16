@@ -12,6 +12,7 @@ import { registerSalesRoutes } from './routes/sales.js';
 import { registerOperationsRoutes } from './routes/operations.js';
 import { registerSyncRoutes } from './routes/sync.js';
 import { registerMpesaRoutes } from './routes/mpesa.js';
+import { registerSmsGatewayRoutes } from './routes/smsGateway.js';
 import { IdempotencyConflictError } from './services/idempotency.js';
 
 export interface BuildAppOptions {
@@ -74,6 +75,7 @@ export async function buildApp(opts: BuildAppOptions): Promise<{
   await registerOperationsRoutes(app, deps);
   await registerSyncRoutes(app, deps);
   await registerMpesaRoutes(app, deps);
+  await registerSmsGatewayRoutes(app, deps);
 
   return { app, sseHub, smsProvider, notifier };
 }

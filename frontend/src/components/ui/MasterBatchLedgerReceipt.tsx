@@ -43,6 +43,7 @@ export const MasterBatchLedgerReceipt: React.FC<MasterBatchLedgerReceiptProps> =
     expenses,
     casualLaborers,
     creditRepayments,
+    reconciliations,
     storeName,
     currentUserName,
     masterName,
@@ -56,6 +57,9 @@ export const MasterBatchLedgerReceipt: React.FC<MasterBatchLedgerReceiptProps> =
       : storeCurrentBatch) ?? storeCurrentBatch;
 
   const effectiveAdmin = masterName || (role === 'MERCHANT' ? currentUserName : '') || 'Master';
+
+  // Day filter state ('ALL' or 'YYYY-MM-DD' business date)
+  const [selectedDayFilter, setSelectedDayFilter] = useState<'ALL' | string>('ALL');
 
   // Edit Costs Modal State
   const [showEditCostsModal, setShowEditCostsModal] = useState(false);
@@ -105,10 +109,33 @@ export const MasterBatchLedgerReceipt: React.FC<MasterBatchLedgerReceiptProps> =
   const totalInboundSourcing =
     produceCost + packagingCost + cessPaid + transportCost + brokerCost + farmLaborCost;
 
+  const batchReconciliations = [...reconciliations]
+    .filter((r) => r.batchId === currentBatch.id)
+    .sort((a, b) => (a.dayNumber - b.dayNumber) || a.date.localeCompare(b.date));
+
+  const dayDateSet = new Set<string>();
+  batchReconciliations.forEach((r) => dayDateSet.add(r.date.slice(0, 10)));
+  sales.filter((s) => s.batchId === currentBatch.id).forEach((s) => dayDateSet.add(s.timestamp.slice(0, 10)));
+  expenses.filter((e) => e.batchId === currentBatch.id).forEach((e) => dayDateSet.add(e.date.slice(0, 10)));
+  creditRepayments.filter((r) => r.batchId === currentBatch.id).forEach((r) => dayDateSet.add(r.date.slice(0, 10)));
+
+  const sortedDayDates = Array.from(dayDateSet).sort();
+  const availableDays = sortedDayDates.map((dateStr, idx) => {
+    const rec = batchReconciliations.find((r) => r.date.slice(0, 10) === dateStr);
+    return {
+      date: dateStr,
+      dayNumber: rec?.dayNumber ?? idx + 1,
+      rec,
+    };
+  });
+
   // --- 2. MARKET OVERHEADS CALCULATIONS ---
   // Only count expenses and labor explicitly logged and settled (isPaid === true) for this batch
   const batchExpenses = expenses.filter(
-    (e) => e.batchId === currentBatch.id && e.isPaid === true
+    (e) =>
+      e.batchId === currentBatch.id &&
+      e.isPaid === true &&
+      (selectedDayFilter === 'ALL' || e.date.slice(0, 10) === selectedDayFilter)
   );
 
   const isNccDailyExpense = (e: (typeof batchExpenses)[number]) => {
@@ -169,7 +196,11 @@ export const MasterBatchLedgerReceipt: React.FC<MasterBatchLedgerReceiptProps> =
   const averageCostPerNet = totalNets > 0 ? totalOutflows / totalNets : 0;
 
   // --- 3. SALES INFLOWS CALCULATIONS ---
-  const batchSales = sales.filter((s) => s.batchId === currentBatch.id);
+  const allBatchSales = sales.filter((s) => s.batchId === currentBatch.id);
+  const batchSales =
+    selectedDayFilter === 'ALL'
+      ? allBatchSales
+      : allBatchSales.filter((s) => s.timestamp.slice(0, 10) === selectedDayFilter);
 
   const g1Sales = batchSales.filter((s) => s.grade === 'GRADE_1');
   const g1SoldNets = g1Sales.reduce((sum, s) => sum + s.quantityNets, 0);
@@ -196,15 +227,60 @@ export const MasterBatchLedgerReceipt: React.FC<MasterBatchLedgerReceiptProps> =
     .reduce((sum, s) => sum + s.totalAmount, 0);
 
   const repaidCreditTotal = creditRepayments
-    .filter((r) => r.batchId === currentBatch.id)
+    .filter(
+      (r) =>
+        r.batchId === currentBatch.id &&
+        (selectedDayFilter === 'ALL' || r.date.slice(0, 10) === selectedDayFilter)
+    )
     .reduce((sum, r) => sum + r.amountPaid, 0);
 
   // Total cash & m-pesa realized into store
   const totalRealizedInflows = cashSalesTotal + mpesaSalesTotal + repaidCreditTotal;
 
-  // Remaining stock
-  const remainingG1 = Math.max(0, currentBatch.initialGrade1Nets - g1SoldNets);
-  const remainingG2 = Math.max(0, currentBatch.initialGrade2Nets - g2SoldNets);
+  // Opening & Closing stock (carries forward previous day's closing stock when filtered by day)
+  const selectedDayMeta =
+    selectedDayFilter !== 'ALL'
+      ? availableDays.find((d) => d.date === selectedDayFilter)
+      : undefined;
+  const prevDayMeta =
+    selectedDayFilter !== 'ALL'
+      ? availableDays[availableDays.findIndex((d) => d.date === selectedDayFilter) - 1]
+      : undefined;
+  const priorSoldG1 =
+    selectedDayFilter !== 'ALL'
+      ? allBatchSales
+          .filter((s) => s.grade === 'GRADE_1' && s.timestamp.slice(0, 10) < selectedDayFilter)
+          .reduce((sum, s) => sum + s.quantityNets, 0)
+      : 0;
+  const priorSoldG2 =
+    selectedDayFilter !== 'ALL'
+      ? allBatchSales
+          .filter((s) => s.grade === 'GRADE_2' && s.timestamp.slice(0, 10) < selectedDayFilter)
+          .reduce((sum, s) => sum + s.quantityNets, 0)
+      : 0;
+
+  const openingG1 =
+    selectedDayFilter === 'ALL'
+      ? currentBatch.initialGrade1Nets
+      : (selectedDayMeta?.rec?.openingStockGrade1 ??
+          prevDayMeta?.rec?.physicalCountGrade1 ??
+          Math.max(0, currentBatch.initialGrade1Nets - priorSoldG1));
+  const openingG2 =
+    selectedDayFilter === 'ALL'
+      ? currentBatch.initialGrade2Nets
+      : (selectedDayMeta?.rec?.openingStockGrade2 ??
+          prevDayMeta?.rec?.physicalCountGrade2 ??
+          Math.max(0, currentBatch.initialGrade2Nets - priorSoldG2));
+
+  // Remaining / Closing stock
+  const remainingG1 =
+    selectedDayMeta?.rec
+      ? selectedDayMeta.rec.physicalCountGrade1
+      : Math.max(0, openingG1 - g1SoldNets);
+  const remainingG2 =
+    selectedDayMeta?.rec
+      ? selectedDayMeta.rec.physicalCountGrade2
+      : Math.max(0, openingG2 - g2SoldNets);
   const totalRemainingNets = remainingG1 + remainingG2;
 
   // Projected remaining inventory revenue at baseline prices
@@ -281,7 +357,85 @@ export const MasterBatchLedgerReceipt: React.FC<MasterBatchLedgerReceiptProps> =
           >
             BATCH #{currentBatch.batchNumber} • TRUCK: {currentBatch.truckPlate} • DAY {currentBatch.dayNumber} OF 4
           </Text>
+
+          {availableDays.length > 0 && (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ gap: 6, paddingTop: 10 }}
+            >
+              <TouchableOpacity
+                onPress={() => setSelectedDayFilter('ALL')}
+                style={{
+                  paddingHorizontal: 10,
+                  paddingVertical: 5,
+                  borderRadius: 12,
+                  backgroundColor:
+                    selectedDayFilter === 'ALL'
+                      ? '#0891B2'
+                      : isDarkMode
+                        ? '#1B4F55'
+                        : '#E2E8F0',
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: 11,
+                    fontWeight: '800',
+                    color: selectedDayFilter === 'ALL' ? '#FFFFFF' : isDarkMode ? '#CFE9EC' : '#334155',
+                  }}
+                >
+                  All Days
+                </Text>
+              </TouchableOpacity>
+              {availableDays.map((d) => {
+                const active = selectedDayFilter === d.date;
+                return (
+                  <TouchableOpacity
+                    key={d.date}
+                    onPress={() => setSelectedDayFilter(active ? 'ALL' : d.date)}
+                    style={{
+                      paddingHorizontal: 10,
+                      paddingVertical: 5,
+                      borderRadius: 12,
+                      backgroundColor: active ? '#0891B2' : isDarkMode ? '#1B4F55' : '#E2E8F0',
+                    }}
+                  >
+                    <Text
+                      style={{
+                        fontSize: 11,
+                        fontWeight: '800',
+                        color: active ? '#FFFFFF' : isDarkMode ? '#CFE9EC' : '#334155',
+                      }}
+                    >
+                      Day {d.dayNumber} ({d.date})
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          )}
         </View>
+
+        {selectedDayFilter !== 'ALL' && (
+          <View
+            style={{
+              backgroundColor: isDarkMode ? '#143D42' : '#ECFEFF',
+              borderColor: isDarkMode ? 'rgba(122, 181, 188, 0.45)' : '#A5F3FC',
+              borderWidth: 1,
+              borderRadius: 10,
+              padding: 10,
+              marginBottom: 10,
+            }}
+          >
+            <Text style={{ fontSize: 11, fontWeight: '800', color: isDarkMode ? '#5EEAD4' : '#0E7490', marginBottom: 4 }}>
+              DAY {selectedDayMeta?.dayNumber ?? ''} STOCK CARRY-FORWARD ({selectedDayFilter})
+            </Text>
+            <Text style={{ fontSize: 11.5, fontFamily: monospaceFont, color: isDarkMode ? '#F0FDFA' : '#0F172A' }}>
+              Opening: {openingG1} G1, {openingG2} G2  →  Sold: {g1SoldNets} G1, {g2SoldNets} G2  →  Closing: {remainingG1} G1, {remainingG2} G2
+            </Text>
+          </View>
+        )}
 
         {/* --- BATCH SUMMARY --- */}
         <View style={[styles.quickOverviewCard, isDarkMode && styles.quickOverviewCardDark]}>

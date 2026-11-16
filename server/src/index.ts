@@ -1,7 +1,7 @@
 import { loadConfig } from './config.js';
 import { createDbPool } from './db/pool.js';
 import { createClerkTokenVerifier } from './auth/tokens.js';
-import { AfricasTalkingSmsProvider, ConsoleSmsProvider } from './providers/sms.js';
+import { AfricasTalkingSmsProvider, ConsoleSmsProvider, SimGatewaySmsProvider } from './providers/sms.js';
 import { startScheduler } from './jobs/scheduler.js';
 import { buildApp } from './app.js';
 
@@ -18,7 +18,9 @@ async function main() {
           config.AFRICASTALKING_USERNAME,
           config.AFRICASTALKING_SENDER_ID
         )
-      : new ConsoleSmsProvider();
+      : config.SMS_PROVIDER === 'sim_gateway'
+        ? new SimGatewaySmsProvider()
+        : new ConsoleSmsProvider();
 
   const { app } = await buildApp({
     db,

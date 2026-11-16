@@ -43,6 +43,8 @@ import { CreditLedgerModal } from './src/components/CreditLedgerModal';
 import { NewBatchModal } from './src/components/NewBatchModal';
 import { ExpensesLaborModal } from './src/components/ExpensesLaborModal';
 import { SellerManagementModal } from './src/components/SellerManagementModal';
+import { useSimSmsGateway } from './src/hooks/useSimSmsGateway';
+import { StartupSplashGate } from './src/components/StartupSplashGate';
 import { AuthModal } from './src/components/AuthModal';
 
 // Design System UI Components (Guided by Reference Specification)
@@ -56,6 +58,7 @@ import { CreditRecordsView } from './src/components/ui/CreditRecordsView';
 import { DailyClosureReceipt } from './src/components/ui/DailyClosureReceipt';
 import { NotificationsModal } from './src/components/ui/NotificationsModal';
 import { BatchProduceModal } from './src/components/ui/BatchProduceModal';
+import { PinchZoomWrapper } from './src/components/ui/PinchZoomWrapper';
 
 function MainScreen() {
   const {
@@ -153,6 +156,7 @@ function MainScreen() {
 
   // Bottom Liquid Glass Navigation State & Filter Chips
   const [activeNavTab, setActiveNavTab] = useState<MainAppTab>('sales');
+  useSimSmsGateway();
 
   // Keep Master and Seller views synchronized with live server sales/stock/ledger changes
   useEffect(() => {
@@ -349,6 +353,7 @@ function MainScreen() {
           />
         )}
 
+        <PinchZoomWrapper>
         <ScrollView 
           style={[styles.scrollView, isDarkMode && styles.scrollViewDark]}
           contentContainerStyle={styles.scrollContent}
@@ -969,7 +974,7 @@ function MainScreen() {
                     activeOpacity={0.8}
                   >
                     <Ionicons name="add-circle" size={16} color="#FFFFFF" />
-                    <Text style={styles.addProductBtnText}>+ Add New Product & Batch</Text>
+                    <Text style={styles.addProductBtnText}>Add New Product & Batch</Text>
                   </TouchableOpacity>
 
                   {currentBatch && (
@@ -1524,6 +1529,7 @@ function MainScreen() {
             </View>
           )}
         </ScrollView>
+        </PinchZoomWrapper>
 
         {/* Floating Liquid Glass Bottom Navigation Dock */}
         <LiquidGlassBottomBar
@@ -1678,22 +1684,26 @@ export default function App() {
 
   if (clerkPublishableKey) {
     return (
-      <ClerkProvider publishableKey={clerkPublishableKey} tokenCache={clerkTokenCache}>
-        <ClerkAuthBridge>
-          <SafeAreaProvider>
-            <MainScreen />
-          </SafeAreaProvider>
-        </ClerkAuthBridge>
-      </ClerkProvider>
+      <StartupSplashGate>
+        <ClerkProvider publishableKey={clerkPublishableKey} tokenCache={clerkTokenCache}>
+          <ClerkAuthBridge>
+            <SafeAreaProvider>
+              <MainScreen />
+            </SafeAreaProvider>
+          </ClerkAuthBridge>
+        </ClerkProvider>
+      </StartupSplashGate>
     );
   }
 
   return (
-    <SellerOnlyBridge>
-      <SafeAreaProvider>
-        <MainScreen />
-      </SafeAreaProvider>
-    </SellerOnlyBridge>
+    <StartupSplashGate>
+      <SellerOnlyBridge>
+        <SafeAreaProvider>
+          <MainScreen />
+        </SafeAreaProvider>
+      </SellerOnlyBridge>
+    </StartupSplashGate>
   );
 }
 
@@ -1747,13 +1757,16 @@ const styles = StyleSheet.create({
   },
   ledgerSubTabRow: {
     flexDirection: 'row',
+    alignItems: 'stretch',
     paddingHorizontal: 14,
     gap: 6,
     marginVertical: 10,
   },
   ledgerSubTabBtn: {
     flex: 1,
+    minWidth: 0,
     flexDirection: 'row',
+    flexWrap: 'wrap',
     justifyContent: 'center',
     alignItems: 'center',
     gap: 4,
@@ -1772,6 +1785,8 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     color: '#334155',
+    flexShrink: 1,
+    textAlign: 'center',
   },
   ledgerSubTabBtnTextActive: {
     color: '#FFFFFF',

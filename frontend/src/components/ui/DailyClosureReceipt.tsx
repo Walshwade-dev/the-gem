@@ -23,6 +23,8 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { THEME } from '../../constants/theme';
 import { useAppStore } from '../../store/useAppStore';
 import { DailyReconciliation } from '../../types';
+import { buildDayClosureReceiptSms } from '../../utils/smsTemplates';
+import { normalizeKenyaE164, sendDirectSimSms } from '../../hooks/useSimSmsGateway';
 
 interface DailyClosureReceiptProps {
   reconciliation?: DailyReconciliation;
@@ -48,6 +50,10 @@ export const DailyClosureReceipt: React.FC<DailyClosureReceiptProps> = ({
     approveDailyReconciliation,
     toggleNccCessPayment,
     toggleExpensePaid,
+    masterPhoneNumber,
+    currentUserPhone,
+    selectedSimSubId,
+    incrementSimSmsSent,
   } = useAppStore();
 
   const effectiveMaster = masterName || (role === 'MERCHANT' ? currentUserName : '') || 'Master';
@@ -59,19 +65,46 @@ export const DailyClosureReceipt: React.FC<DailyClosureReceiptProps> = ({
   );
   const [isSealing, setIsSealing] = useState(false);
   const [locallySealed, setLocallySealed] = useState(false);
+  const [sendingClosureSms, setSendingClosureSms] = useState(false);
 
   const isViewingLive = selectedView === 'LIVE';
+  const liveDayNumber = currentBatch?.dayNumber || 1;
+
+  // Only CLOSED days (strictly before today's live day) appear as history tabs.
+  // Today's day is always represented by "Today (Live)", and duplicates per day are collapsed.
+  const batchReconciliations = useMemo(() => {
+    const filtered = currentBatch
+      ? reconciliations.filter((r) => r.batchId === currentBatch.id)
+      : reconciliations;
+    const closedOnly = filtered.filter(
+      (r) => typeof r.dayNumber !== 'number' || r.dayNumber < liveDayNumber
+    );
+    const byDay = new Map<string, DailyReconciliation>();
+    for (const r of closedOnly) {
+      const key = typeof r.dayNumber === 'number' ? `d${r.dayNumber}` : `id${r.id}`;
+      const prev = byDay.get(key);
+      if (!prev || (r.cobTimestamp ?? '') > (prev.cobTimestamp ?? '')) byDay.set(key, r);
+    }
+    return [...byDay.values()].sort(
+      (a, b) => ((a.dayNumber ?? 0) - (b.dayNumber ?? 0)) || a.date.localeCompare(b.date)
+    );
+  }, [reconciliations, currentBatch, liveDayNumber]);
+
+  const latestClosedRec = batchReconciliations.length > 0
+    ? batchReconciliations[batchReconciliations.length - 1]
+    : undefined;
+
   const activeRec: DailyReconciliation | undefined =
     !isViewingLive
-      ? reconciliations.find((r) => r.id === selectedView) || reconciliation
+      ? batchReconciliations.find((r) => r.id === selectedView) || reconciliations.find((r) => r.id === selectedView) || reconciliation
       : undefined;
 
-  // Stock calculations
+  // Carry forward previous day's closing stock as today's opening stock when viewing live
   const openingG1 = isViewingLive
-    ? (currentBatch?.initialGrade1Nets ?? 0)
+    ? (latestClosedRec ? latestClosedRec.physicalCountGrade1 : (currentBatch?.initialGrade1Nets ?? 0))
     : (activeRec?.openingStockGrade1 ?? 0);
   const openingG2 = isViewingLive
-    ? (currentBatch?.initialGrade2Nets ?? 0)
+    ? (latestClosedRec ? latestClosedRec.physicalCountGrade2 : (currentBatch?.initialGrade2Nets ?? 0))
     : (activeRec?.openingStockGrade2 ?? 0);
 
   const closingG1 = isViewingLive
@@ -82,8 +115,10 @@ export const DailyClosureReceipt: React.FC<DailyClosureReceiptProps> = ({
     : (activeRec?.physicalCountGrade2 ?? 0);
 
   const liveBatchSales = useMemo(() => {
-    return currentBatch ? sales.filter((s) => s.batchId === currentBatch.id) : sales;
-  }, [sales, currentBatch]);
+    const base = currentBatch ? sales.filter((s) => s.batchId === currentBatch.id) : sales;
+    if (!latestClosedRec) return base;
+    return base.filter((s) => s.timestamp > latestClosedRec.cobTimestamp);
+  }, [sales, currentBatch, latestClosedRec]);
 
   const soldG1Live = useMemo(() => {
     return liveBatchSales
@@ -297,10 +332,18 @@ export const DailyClosureReceipt: React.FC<DailyClosureReceiptProps> = ({
 
   return (
     <View style={styles.outerWrapper}>
-      {/* Historical Closure Selector (if any past closures exist) */}
-      {reconciliations.length > 0 && (
+      {/* Historical Closure Selector (Today Live + Past Sealed Days) */}
+      {batchReconciliations.length > 0 && (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.historySelectorRow}>
-          {reconciliations.map((rec, idx) => {
+          <TouchableOpacity
+            style={[styles.historyTab, isViewingLive && styles.historyTabActive]}
+            onPress={() => setSelectedView('LIVE')}
+          >
+            <Text style={[styles.historyTabText, isViewingLive && styles.historyTabTextActive]}>
+              Today (Live)
+            </Text>
+          </TouchableOpacity>
+          {batchReconciliations.map((rec, idx) => {
             const isSelected = !isViewingLive && rec.id === activeRec?.id;
             return (
               <TouchableOpacity
@@ -474,6 +517,7 @@ export const DailyClosureReceipt: React.FC<DailyClosureReceiptProps> = ({
                 },
               ]}
               onPress={toggleNccCessPayment}
+              disabled={!isViewingLive}
               activeOpacity={0.8}
             >
               <Ionicons
@@ -503,6 +547,7 @@ export const DailyClosureReceipt: React.FC<DailyClosureReceiptProps> = ({
                 },
               ]}
               onPress={() => toggleExpensePaid('WATCHMAN')}
+              disabled={!isViewingLive}
               activeOpacity={0.8}
             >
               <Ionicons
@@ -532,6 +577,7 @@ export const DailyClosureReceipt: React.FC<DailyClosureReceiptProps> = ({
                 },
               ]}
               onPress={() => toggleExpensePaid('CLEANER')}
+              disabled={!isViewingLive}
               activeOpacity={0.8}
             >
               <Ionicons
@@ -610,7 +656,7 @@ export const DailyClosureReceipt: React.FC<DailyClosureReceiptProps> = ({
         </View>
 
         {/* 11. Master Approval Action / Signature */}
-        {role === 'MERCHANT' && !isApproved ? (
+        {role === 'MERCHANT' && isViewingLive && !isApproved ? (
           <TouchableOpacity
             style={[
               styles.masterApproveBtn,
@@ -626,11 +672,13 @@ export const DailyClosureReceipt: React.FC<DailyClosureReceiptProps> = ({
               {isSealing ? 'SEALING DAY...' : 'APPROVE & SEAL DAY'}
             </Text>
           </TouchableOpacity>
-        ) : isApproved ? (
+        ) : isApproved || !isViewingLive ? (
           <View style={[styles.approvalSignBox, isDarkMode && { backgroundColor: '#256A71', borderColor: '#FDE68A', borderWidth: 0.75 }]}>
-            <Ionicons name="shield-checkmark" size={16} color={isDarkMode ? '#FDE68A' : '#059669'} />
+            <Ionicons name={isViewingLive ? 'shield-checkmark' : 'lock-closed'} size={16} color={isDarkMode ? '#FDE68A' : '#059669'} />
             <Text style={[styles.approvalSignText, { fontFamily: monospaceFont }, isDarkMode && { color: '#FDE68A' }]}>
-              MASTER AUDIT SIGNATURE: Approved by {effectiveMaster} on {currentDateText}
+              {isViewingLive
+                ? `MASTER AUDIT SIGNATURE: Approved by ${effectiveMaster} on ${currentDateText}`
+                : `CLOSED DAY (READ-ONLY): Day ${activeRec?.dayNumber || ''} sealed on ${currentDateText}`}
             </Text>
           </View>
         ) : (
@@ -640,6 +688,71 @@ export const DailyClosureReceipt: React.FC<DailyClosureReceiptProps> = ({
               QUEUED: Awaiting Master Administrator verification and sign-off.
             </Text>
           </View>
+        )}
+
+        {Platform.OS === 'android' && (
+          <TouchableOpacity
+            disabled={sendingClosureSms}
+            activeOpacity={0.85}
+            onPress={async () => {
+              const target = (masterPhoneNumber || (role === 'MERCHANT' ? currentUserPhone : '')).trim();
+              if (target.replace(/\D/g, '').length < 9) {
+                Alert.alert(
+                  'Master Phone Required',
+                  'Go to Profile -> SIM SMS Setup and enter Master\'s Phone Number first.'
+                );
+                return;
+              }
+              const smsBody = buildDayClosureReceiptSms({
+                sellerName: currentUserName || 'Salesperson',
+                storeName: storeName || 'The Gem',
+                dateText: currentDateText,
+                truckPlate: currentBatch?.truckPlate,
+                g1Sold: soldG1,
+                g2Sold: soldG2,
+                grossSales: grossSalesSum,
+                creditTotal: totalCreditSum,
+                expensesTotal: totalExpensesSum,
+                cashInHand: cashDeposited,
+                mpesaDirect,
+                totalRemitted,
+              });
+              setSendingClosureSms(true);
+              try {
+                const e164 = normalizeKenyaE164(target);
+                await sendDirectSimSms(e164, smsBody, selectedSimSubId);
+                incrementSimSmsSent();
+                Alert.alert(
+                  'Day Closure SMS Sent',
+                  `Final Day Closure Receipt sent from your phone SIM to Master (${e164}).`
+                );
+              } catch (err) {
+                Alert.alert(
+                  'SIM Send Failed',
+                  err instanceof Error ? err.message : 'Could not send Day Closure SMS'
+                );
+              } finally {
+                setSendingClosureSms(false);
+              }
+            }}
+            style={{
+              marginTop: 10,
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 6,
+              backgroundColor: '#0284C7',
+              borderRadius: 10,
+              paddingVertical: 11,
+              paddingHorizontal: 14,
+              opacity: sendingClosureSms ? 0.65 : 1,
+            }}
+          >
+            <Ionicons name="paper-plane-outline" size={16} color="#FFFFFF" />
+            <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '800', letterSpacing: 0.4 }}>
+              {sendingClosureSms ? 'SENDING DAY CLOSURE SMS...' : 'SEND DAY CLOSURE SMS TO MASTER'}
+            </Text>
+          </TouchableOpacity>
         )}
       </View>
     </View>

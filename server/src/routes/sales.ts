@@ -531,20 +531,40 @@ export async function registerSalesRoutes(app: FastifyInstance, deps: AppRouteDe
             }
           } else if (saleStatus === 'CONFIRMED') {
             // CASH or MPESA payment
+            const normalizedPayerPhone = data.payerPhoneE164
+              ? normalizeKenyaPhoneToE164(data.payerPhoneE164)
+              : null;
             await tx.insert(payments).values({
               masterId: auth.masterId,
               saleId: sale.id,
               method: data.paymentMode,
               amountCents: totalAmountCents,
               mpesaReceipt: data.mpesaReceipt ?? null,
-              payerPhoneE164: data.payerPhoneE164
-                ? normalizeKenyaPhoneToE164(data.payerPhoneE164)
-                : null,
+              payerPhoneE164: normalizedPayerPhone,
               source: 'MANUAL',
               recordedByType: auth.actorType,
               recordedById: auth.userId,
               businessDate,
             });
+
+            const thankYouPhone = normalizedPayerPhone ?? normalizedBuyerPhone;
+            if (thankYouPhone) {
+              const amountKsh = (totalAmountCents / 100).toFixed(0);
+              const receiptSuffix = data.mpesaReceipt ? ` (Ref: ${data.mpesaReceipt})` : '';
+              await tx.insert(smsOutbox).values({
+                masterId: auth.masterId,
+                toPhoneE164: thankYouPhone,
+                template: 'PAYMENT_THANK_YOU',
+                payload: {
+                  saleId: sale.id,
+                  method: data.paymentMode,
+                  amountCents: totalAmountCents,
+                  mpesaReceipt: data.mpesaReceipt ?? null,
+                },
+                bodyText: `Thank you for your payment of KSh ${amountKsh} via ${data.paymentMode}${receiptSuffix}. - The Gem`,
+                status: 'QUEUED',
+              });
+            }
           }
 
           await writeAuditEvent(tx, {
@@ -992,6 +1012,37 @@ export async function registerSalesRoutes(app: FastifyInstance, deps: AppRouteDe
               .returning();
 
             const newRemaining = remaining - parsed.data.amountCents;
+
+            const normalizedPayerPhone = parsed.data.payerPhoneE164
+              ? normalizeKenyaPhoneToE164(parsed.data.payerPhoneE164)
+              : null;
+            let recipientPhone = normalizedPayerPhone;
+            if (!recipientPhone && ce.buyerId) {
+              const [buyer] = await tx
+                .select({ phoneE164: buyers.phoneE164 })
+                .from(buyers)
+                .where(eq(buyers.id, ce.buyerId))
+                .limit(1);
+              recipientPhone = buyer?.phoneE164 ?? null;
+            }
+            if (recipientPhone) {
+              const paidKsh = (parsed.data.amountCents / 100).toFixed(0);
+              const remKsh = (newRemaining / 100).toFixed(0);
+              await tx.insert(smsOutbox).values({
+                masterId: auth.masterId,
+                toPhoneE164: recipientPhone,
+                template: 'REPAYMENT_THANK_YOU',
+                payload: {
+                  creditEntryId: ce.id,
+                  paymentId: payment.id,
+                  amountCents: parsed.data.amountCents,
+                  remainingOwedCents: newRemaining,
+                },
+                bodyText: `Thank you for your payment of KSh ${paidKsh} via ${parsed.data.method}. Remaining credit balance: KSh ${remKsh}. - The Gem`,
+                status: 'QUEUED',
+              });
+            }
+
             return { payment, remainingOwedCents: newRemaining };
           });
 

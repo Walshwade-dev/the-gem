@@ -12,12 +12,16 @@ import {
   TouchableOpacity, 
   TextInput, 
   ScrollView, 
-  Alert 
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { THEME } from '../constants/theme';
 import { useAppStore } from '../store/useAppStore';
 import { confirmAndRevokeAssignment } from '../utils/revokeAssignmentPrompt';
+import { normalizeKenyaE164, sendDirectSimSms } from '../hooks/useSimSmsGateway';
+import { buildSellerOtpInviteSms } from '../utils/smsTemplates';
 
 interface SellerManagementModalProps {
   visible: boolean;
@@ -37,6 +41,10 @@ export const SellerManagementModal: React.FC<SellerManagementModalProps> = ({
     revokeSellerAssignment,
     generateSellerInviteCode,
     isDarkMode,
+    storeName,
+    simSmsGatewayEnabled,
+    selectedSimSubId,
+    incrementSimSmsSent,
   } = useAppStore();
 
   const unassignedG1 = currentBatch?.unassignedGrade1Nets ?? currentBatch?.remainingGrade1Nets ?? 0;
@@ -137,13 +145,27 @@ export const SellerManagementModal: React.FC<SellerManagementModalProps> = ({
     );
   }
 
+  const dispatchSellerOtpSms = async (phone: string, name: string, code: string): Promise<boolean> => {
+    if (Platform.OS !== 'android' || !simSmsGatewayEnabled) return false;
+    try {
+      const e164 = normalizeKenyaE164(phone);
+      const body = buildSellerOtpInviteSms({ sellerName: name, code, storeName });
+      await sendDirectSimSms(e164, body, selectedSimSubId);
+      incrementSimSmsSent();
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
   const handleIssueLoginCode = async (phone: string, name: string) => {
     const res = await generateSellerInviteCode(phone);
     if (res.success && res.code) {
       setIssuedCodes((prev) => ({ ...prev, [phone]: res.code! }));
+      const sentViaSim = await dispatchSellerOtpSms(phone, name, res.code);
       Alert.alert(
-        '🔑 Worker Login Code',
-        `Share this 6-digit login code with ${name} (${phone}):\n\n${res.code}\n\nValid for 24 hours. They can enter it on the Sales Login tab and set their own passphrase.`
+        sentViaSim ? '📲 Worker Login Code Sent via SIM' : '🔑 Worker Login Code',
+        `${sentViaSim ? `SMS sent to ${phone} with ` : `Share this `}6-digit login code for ${name}:\n\n${res.code}\n\nValid for 24 hours. They can enter it on the Sales Login tab and set their own passphrase.`
       );
     } else {
       Alert.alert('Could Not Generate Code', res.message || 'Please try again.');
@@ -223,14 +245,16 @@ export const SellerManagementModal: React.FC<SellerManagementModalProps> = ({
         expectedPriceG2: p2,
       });
 
+      let sentViaSim = false;
       if (result?.inviteCode) {
         setIssuedCodes((prev) => ({ ...prev, [cleanSellerPhone]: result.inviteCode! }));
+        sentViaSim = await dispatchSellerOtpSms(cleanSellerPhone, cleanSellerName, result.inviteCode);
       }
 
       Alert.alert(
         '✅ Seller Assigned & Activated',
         result?.inviteCode
-          ? `${cleanSellerName} assigned ${g1} G1 nets & ${g2} G2 nets.\nPhone: ${cleanSellerPhone}\n\n🔑 Worker Login Code: ${result.inviteCode}\nShare this 6-digit code with ${cleanSellerName} so they can log in and set their passphrase.`
+          ? `${cleanSellerName} assigned ${g1} G1 nets & ${g2} G2 nets.\nPhone: ${cleanSellerPhone}\n\n🔑 Worker Login Code: ${result.inviteCode}\n${sentViaSim ? `📲 OTP SMS sent directly from your SIM to ${cleanSellerPhone} so they can log in and set their passphrase.` : `Share this 6-digit code with ${cleanSellerName} so they can log in and set their passphrase.`}`
           : `${cleanSellerName} assigned ${g1} G1 nets & ${g2} G2 nets.\nPhone registered: ${cleanSellerPhone}.`
       );
     } catch (err) {
@@ -244,8 +268,11 @@ export const SellerManagementModal: React.FC<SellerManagementModalProps> = ({
   };
 
   return (
-    <Modal visible={visible} animationType="slide" transparent>
-      <View style={styles.overlay}>
+    <Modal visible={visible} animationType="fade" transparent>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.overlay}
+      >
         <View style={[styles.modalCard, isDarkMode && styles.modalCardDark]}>
           {/* Mobile Bottom-Sheet Drag Handle */}
           <View style={styles.dragHandleContainer}>
@@ -268,7 +295,12 @@ export const SellerManagementModal: React.FC<SellerManagementModalProps> = ({
             </TouchableOpacity>
           </View>
 
-          <ScrollView style={styles.body} showsVerticalScrollIndicator={false}>
+          <ScrollView
+            style={styles.body}
+            contentContainerStyle={{ paddingBottom: 24 }}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
             {/* Form */}
             <View style={[styles.formBox, isDarkMode && styles.formBoxDark]}>
               <Text style={styles.formTitle}>NEW SELLER QUOTA ASSIGNMENT</Text>
@@ -430,7 +462,7 @@ export const SellerManagementModal: React.FC<SellerManagementModalProps> = ({
             })}
           </ScrollView>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 };
@@ -439,17 +471,22 @@ const styles = StyleSheet.create({
   overlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.65)',
-    justifyContent: 'flex-end',
+    justifyContent: 'center',
     alignItems: 'center',
+    padding: 14,
   },
   modalCard: {
     backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    borderRadius: 22,
     width: '100%',
     maxWidth: 500,
-    maxHeight: '92%',
-    paddingBottom: 24,
+    maxHeight: '86%',
+    paddingBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+    elevation: 14,
   },
   modalCardDark: {
     backgroundColor: '#0F172A',

@@ -11,7 +11,7 @@ const EnvSchema = z.object({
   CLERK_SECRET_KEY: z.string().optional(),
   CLERK_WEBHOOK_SECRET: z.string().optional(),
   SELLER_JWT_SECRET: z.string().min(16).default('dev-seller-jwt-secret-change-in-prod-32c'),
-  SMS_PROVIDER: z.enum(['console', 'africastalking']).default('console'),
+  SMS_PROVIDER: z.enum(['console', 'africastalking', 'sim_gateway']).default('sim_gateway'),
   AFRICASTALKING_API_KEY: z.string().optional(),
   AFRICASTALKING_USERNAME: z.string().optional(),
   AFRICASTALKING_SENDER_ID: z.string().default('THEGEM'),
